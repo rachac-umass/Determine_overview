@@ -131,8 +131,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </details>
 </div>
 </section>
-<section id="sql-queries" class="level1">
-<h1>Sql queries</h1>
+<section id="reading-csv-file" class="level1">
+<h1>Reading csv file</h1>
 <div id="9f5dae36" class="cell" data-execution_count="118">
 <details class="code-fold">
 <summary>Code</summary>
@@ -173,7 +173,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div id="2583c869" class="cell" data-execution_count="16">
+<div id="2583c869" class="cell" data-execution_count="52">
 <details class="code-fold">
 <summary>Code</summary>
 <div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> analyze_values_units(df):</span>
@@ -190,82 +190,188 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>    </span>
 <span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(pd.DataFrame({<span class="st">"uni_units"</span>:uni_units,<span class="st">"units_count"</span>:units_count}).to_string(index<span class="op">=</span><span class="va">False</span>))</span>
 <span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"</span><span class="ch">\n</span><span class="st">"</span>)</span>
-<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> unit <span class="kw">in</span> uni_units:</span>
-<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>        numbers <span class="op">=</span> df.<span class="bu">filter</span>(pl.col(<span class="st">'UNITS_CD'</span>) <span class="op">==</span> unit).with_columns(</span>
-<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>                    pl.col(<span class="st">'NVAL_NUM'</span>).cast(pl.Float64)</span>
-<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a>                )[<span class="st">'NVAL_NUM'</span>].to_numpy()</span>
-<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-22"><a href="#cb7-22" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Formatting with HTML for larger and bold text</span></span>
-<span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;div style='font-size:20px; font-weight:bold;'&gt;Statistics for measurement unit: '</span><span class="sc">{</span>unit<span class="sc">}</span><span class="ss">'&lt;/div&gt;"</span>))</span>
-<span id="cb7-24"><a href="#cb7-24" aria-hidden="true" tabindex="-1"></a><span class="co">#         display(HTML(f"&lt;h3&gt;Statistics for measurement unit: &lt;strong&gt;{unit}&lt;/strong&gt;&lt;/h3&gt;"))</span></span>
-<span id="cb7-25"><a href="#cb7-25" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;strong&gt;Total Count:&lt;/strong&gt; </span><span class="sc">{</span><span class="bu">len</span>(numbers)<span class="sc">}</span><span class="ss">"</span>))</span>
-<span id="cb7-26"><a href="#cb7-26" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-27"><a href="#cb7-27" aria-hidden="true" tabindex="-1"></a>        minimum <span class="op">=</span> <span class="bu">min</span>(numbers)</span>
-<span id="cb7-28"><a href="#cb7-28" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;strong&gt;Minimum:&lt;/strong&gt; </span><span class="sc">{</span>minimum<span class="sc">}</span><span class="ss">"</span>))</span>
-<span id="cb7-29"><a href="#cb7-29" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-30"><a href="#cb7-30" aria-hidden="true" tabindex="-1"></a>        maximum <span class="op">=</span> <span class="bu">max</span>(numbers)</span>
-<span id="cb7-31"><a href="#cb7-31" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;strong&gt;Maximum:&lt;/strong&gt; </span><span class="sc">{</span>maximum<span class="sc">}</span><span class="ss">"</span>))</span>
-<span id="cb7-32"><a href="#cb7-32" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-33"><a href="#cb7-33" aria-hidden="true" tabindex="-1"></a>        mean <span class="op">=</span> <span class="bu">sum</span>(numbers) <span class="op">/</span> <span class="bu">len</span>(numbers)</span>
-<span id="cb7-34"><a href="#cb7-34" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;strong&gt;Mean:&lt;/strong&gt; </span><span class="sc">{</span>mean<span class="sc">}</span><span class="ss">"</span>))</span>
-<span id="cb7-35"><a href="#cb7-35" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-36"><a href="#cb7-36" aria-hidden="true" tabindex="-1"></a>        standard_deviation <span class="op">=</span> np.std(numbers)</span>
-<span id="cb7-37"><a href="#cb7-37" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;strong&gt;Standard Deviation:&lt;/strong&gt; </span><span class="sc">{</span>standard_deviation<span class="sc">}</span><span class="ss">"</span>))</span>
-<span id="cb7-38"><a href="#cb7-38" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="st">"&lt;br&gt;"</span>))</span>
-<span id="cb7-39"><a href="#cb7-39" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb7-40"><a href="#cb7-40" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">""</span>)</span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>    fig, axes <span class="op">=</span> plt.subplots(num_units, <span class="dv">1</span>, figsize<span class="op">=</span>(<span class="dv">10</span>, <span class="dv">6</span> <span class="op">*</span> num_units))</span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> unit <span class="kw">in</span> uni_units:</span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a>        numbers <span class="op">=</span> df.<span class="bu">filter</span>(pl.col(<span class="st">'UNITS_CD'</span>) <span class="op">==</span> unit).with_columns(</span>
+<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a>                    pl.col(<span class="st">'NVAL_NUM'</span>).cast(pl.Float64)</span>
+<span id="cb7-22"><a href="#cb7-22" aria-hidden="true" tabindex="-1"></a>                )[<span class="st">'NVAL_NUM'</span>].to_numpy()</span>
+<span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-24"><a href="#cb7-24" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Formatting with HTML for larger and bold text</span></span>
+<span id="cb7-25"><a href="#cb7-25" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;div style='font-size:20px; font-weight:bold;'&gt;Statistics for measurement unit: '</span><span class="sc">{</span>unit<span class="sc">}</span><span class="ss">'&lt;/div&gt;"</span>))</span>
+<span id="cb7-26"><a href="#cb7-26" aria-hidden="true" tabindex="-1"></a><span class="co">#         display(HTML(f"&lt;h3&gt;Statistics for measurement unit: &lt;strong&gt;{unit}&lt;/strong&gt;&lt;/h3&gt;"))</span></span>
+<span id="cb7-27"><a href="#cb7-27" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;strong&gt;Total Count:&lt;/strong&gt; </span><span class="sc">{</span><span class="bu">len</span>(numbers)<span class="sc">}</span><span class="ss">"</span>))</span>
+<span id="cb7-28"><a href="#cb7-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-29"><a href="#cb7-29" aria-hidden="true" tabindex="-1"></a>        minimum <span class="op">=</span> <span class="bu">min</span>(numbers)</span>
+<span id="cb7-30"><a href="#cb7-30" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;strong&gt;Minimum:&lt;/strong&gt; </span><span class="sc">{</span>minimum<span class="sc">}</span><span class="ss">"</span>))</span>
+<span id="cb7-31"><a href="#cb7-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-32"><a href="#cb7-32" aria-hidden="true" tabindex="-1"></a>        maximum <span class="op">=</span> <span class="bu">max</span>(numbers)</span>
+<span id="cb7-33"><a href="#cb7-33" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;strong&gt;Maximum:&lt;/strong&gt; </span><span class="sc">{</span>maximum<span class="sc">}</span><span class="ss">"</span>))</span>
+<span id="cb7-34"><a href="#cb7-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-35"><a href="#cb7-35" aria-hidden="true" tabindex="-1"></a>        mean <span class="op">=</span> <span class="bu">sum</span>(numbers) <span class="op">/</span> <span class="bu">len</span>(numbers)</span>
+<span id="cb7-36"><a href="#cb7-36" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;strong&gt;Mean:&lt;/strong&gt; </span><span class="sc">{</span>mean<span class="sc">}</span><span class="ss">"</span>))</span>
+<span id="cb7-37"><a href="#cb7-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-38"><a href="#cb7-38" aria-hidden="true" tabindex="-1"></a>        standard_deviation <span class="op">=</span> np.std(numbers)</span>
+<span id="cb7-39"><a href="#cb7-39" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;strong&gt;Standard Deviation:&lt;/strong&gt; </span><span class="sc">{</span>standard_deviation<span class="sc">}</span><span class="ss">"</span>))</span>
+<span id="cb7-40"><a href="#cb7-40" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="st">"&lt;br&gt;"</span>))</span>
 <span id="cb7-41"><a href="#cb7-41" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb7-42"><a href="#cb7-42" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb7-43"><a href="#cb7-43" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Define bin edges, adding an extra bin for values greater than 10</span></span>
-<span id="cb7-44"><a href="#cb7-44" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span>  unit <span class="op">==</span> <span class="st">'mg/dL'</span>:</span>
-<span id="cb7-45"><a href="#cb7-45" aria-hidden="true" tabindex="-1"></a>            bins <span class="op">=</span> [<span class="dv">0</span>,<span class="dv">6</span>, <span class="fl">6.5</span>, <span class="dv">15</span>, <span class="dv">100</span>, <span class="dv">126</span>, <span class="dv">140</span>, <span class="dv">240</span>, <span class="bu">float</span>(<span class="st">'inf'</span>)]</span>
-<span id="cb7-46"><a href="#cb7-46" aria-hidden="true" tabindex="-1"></a>            bin_labels <span class="op">=</span> [</span>
-<span id="cb7-47"><a href="#cb7-47" aria-hidden="true" tabindex="-1"></a>                <span class="st">"0-6"</span>, <span class="st">"6-6.5"</span>, <span class="st">"6.5-15"</span>, <span class="st">"15-100"</span>, <span class="st">"100-126"</span>,<span class="st">"126-140"</span>,<span class="st">'140-240'</span> ,<span class="st">"240+"</span></span>
-<span id="cb7-48"><a href="#cb7-48" aria-hidden="true" tabindex="-1"></a>            ]</span>
-<span id="cb7-49"><a href="#cb7-49" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
-<span id="cb7-50"><a href="#cb7-50" aria-hidden="true" tabindex="-1"></a>            </span>
-<span id="cb7-51"><a href="#cb7-51" aria-hidden="true" tabindex="-1"></a>            bins <span class="op">=</span> [<span class="dv">0</span>, <span class="dv">2</span>, <span class="dv">4</span>, <span class="dv">6</span>, <span class="fl">6.5</span>, <span class="dv">8</span>, <span class="dv">10</span>, <span class="dv">100</span>, <span class="bu">float</span>(<span class="st">'inf'</span>)]</span>
-<span id="cb7-52"><a href="#cb7-52" aria-hidden="true" tabindex="-1"></a>            bin_labels <span class="op">=</span> [</span>
-<span id="cb7-53"><a href="#cb7-53" aria-hidden="true" tabindex="-1"></a>                <span class="st">"0-2"</span>, <span class="st">"2-4"</span>, <span class="st">"4-6"</span>, <span class="st">"6-6.5"</span>, <span class="st">"6.5-8"</span>, <span class="st">"8-10"</span>, <span class="st">"10-100"</span>, <span class="st">"100+"</span></span>
-<span id="cb7-54"><a href="#cb7-54" aria-hidden="true" tabindex="-1"></a>            ]</span>
-<span id="cb7-55"><a href="#cb7-55" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-56"><a href="#cb7-56" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb7-57"><a href="#cb7-57" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb7-58"><a href="#cb7-58" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Use pandas.cut to bin the data</span></span>
-<span id="cb7-59"><a href="#cb7-59" aria-hidden="true" tabindex="-1"></a>        binned_data <span class="op">=</span> pd.cut(numbers, bins<span class="op">=</span>bins, labels<span class="op">=</span>bin_labels, right<span class="op">=</span><span class="va">False</span>)</span>
-<span id="cb7-60"><a href="#cb7-60" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-61"><a href="#cb7-61" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Count the number of occurrences in each bin</span></span>
-<span id="cb7-62"><a href="#cb7-62" aria-hidden="true" tabindex="-1"></a>        bin_counts <span class="op">=</span> binned_data.value_counts().sort_index()</span>
-<span id="cb7-63"><a href="#cb7-63" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb7-64"><a href="#cb7-64" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Plot the bar chart</span></span>
-<span id="cb7-65"><a href="#cb7-65" aria-hidden="true" tabindex="-1"></a>        plt.figure(figsize<span class="op">=</span>(<span class="dv">10</span>, <span class="dv">6</span>))</span>
-<span id="cb7-66"><a href="#cb7-66" aria-hidden="true" tabindex="-1"></a>        ax <span class="op">=</span> bin_counts.plot(kind<span class="op">=</span><span class="st">'bar'</span>, color<span class="op">=</span><span class="st">'skyblue'</span>, edgecolor<span class="op">=</span><span class="st">'black'</span>)</span>
-<span id="cb7-67"><a href="#cb7-67" aria-hidden="true" tabindex="-1"></a>        plt.title(<span class="ss">f'Bar plot for loinc </span><span class="sc">{</span>loinc_code<span class="sc">}</span><span class="ss"> and unit "</span><span class="sc">{</span>unit<span class="sc">}</span><span class="ss">"" '</span>)</span>
-<span id="cb7-68"><a href="#cb7-68" aria-hidden="true" tabindex="-1"></a>        plt.xlabel(<span class="st">'Bins'</span>)</span>
-<span id="cb7-69"><a href="#cb7-69" aria-hidden="true" tabindex="-1"></a>        plt.ylabel(<span class="st">'Count'</span>)</span>
-<span id="cb7-70"><a href="#cb7-70" aria-hidden="true" tabindex="-1"></a>        plt.xticks(rotation<span class="op">=</span><span class="dv">45</span>)</span>
-<span id="cb7-71"><a href="#cb7-71" aria-hidden="true" tabindex="-1"></a>        plt.grid(axis<span class="op">=</span><span class="st">'y'</span>, linestyle<span class="op">=</span><span class="st">'--'</span>, alpha<span class="op">=</span><span class="fl">0.7</span>)</span>
-<span id="cb7-72"><a href="#cb7-72" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb7-73"><a href="#cb7-73" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> p <span class="kw">in</span> ax.patches:</span>
-<span id="cb7-74"><a href="#cb7-74" aria-hidden="true" tabindex="-1"></a>            ax.annotate(<span class="bu">str</span>(p.get_height()), (p.get_x() <span class="op">+</span> p.get_width() <span class="op">/</span> <span class="dv">2</span>, p.get_height()),</span>
-<span id="cb7-75"><a href="#cb7-75" aria-hidden="true" tabindex="-1"></a>                ha<span class="op">=</span><span class="st">'center'</span>, va<span class="op">=</span><span class="st">'bottom'</span>)</span>
-<span id="cb7-76"><a href="#cb7-76" aria-hidden="true" tabindex="-1"></a>            </span>
-<span id="cb7-77"><a href="#cb7-77" aria-hidden="true" tabindex="-1"></a>        plt.show()</span>
+<span id="cb7-42"><a href="#cb7-42" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">""</span>)</span>
+<span id="cb7-43"><a href="#cb7-43" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb7-44"><a href="#cb7-44" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb7-45"><a href="#cb7-45" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Define bin edges, adding an extra bin for values greater than 10</span></span>
+<span id="cb7-46"><a href="#cb7-46" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span>  unit <span class="op">==</span> <span class="st">'mg/dL'</span> <span class="kw">or</span> unit <span class="op">==</span><span class="st">'mL/min'</span>:</span>
+<span id="cb7-47"><a href="#cb7-47" aria-hidden="true" tabindex="-1"></a>            bins <span class="op">=</span> [<span class="dv">0</span>,<span class="dv">6</span>, <span class="fl">6.5</span>, <span class="dv">15</span>, <span class="dv">100</span>, <span class="dv">126</span>, <span class="dv">140</span>, <span class="dv">240</span>, <span class="bu">float</span>(<span class="st">'inf'</span>)]</span>
+<span id="cb7-48"><a href="#cb7-48" aria-hidden="true" tabindex="-1"></a>            bin_labels <span class="op">=</span> [</span>
+<span id="cb7-49"><a href="#cb7-49" aria-hidden="true" tabindex="-1"></a>                <span class="st">"0-6"</span>, <span class="st">"6-6.5"</span>, <span class="st">"6.5-15"</span>, <span class="st">"15-100"</span>, <span class="st">"100-126"</span>,<span class="st">"126-140"</span>,<span class="st">'140-240'</span> ,<span class="st">"240+"</span></span>
+<span id="cb7-50"><a href="#cb7-50" aria-hidden="true" tabindex="-1"></a>            ]</span>
+<span id="cb7-51"><a href="#cb7-51" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
+<span id="cb7-52"><a href="#cb7-52" aria-hidden="true" tabindex="-1"></a>            </span>
+<span id="cb7-53"><a href="#cb7-53" aria-hidden="true" tabindex="-1"></a>            bins <span class="op">=</span> [<span class="dv">0</span>, <span class="dv">2</span>, <span class="dv">4</span>, <span class="dv">6</span>, <span class="fl">6.5</span>, <span class="dv">8</span>, <span class="dv">10</span>, <span class="dv">20</span>,<span class="dv">100</span>, <span class="bu">float</span>(<span class="st">'inf'</span>)]</span>
+<span id="cb7-54"><a href="#cb7-54" aria-hidden="true" tabindex="-1"></a>            bin_labels <span class="op">=</span> [</span>
+<span id="cb7-55"><a href="#cb7-55" aria-hidden="true" tabindex="-1"></a>                <span class="st">"0-2"</span>, <span class="st">"2-4"</span>, <span class="st">"4-6"</span>, <span class="st">"6-6.5"</span>, <span class="st">"6.5-8"</span>, <span class="st">"8-10"</span>, <span class="st">"10-20"</span>,<span class="st">"20-100"</span>, <span class="st">"100+"</span></span>
+<span id="cb7-56"><a href="#cb7-56" aria-hidden="true" tabindex="-1"></a>            ]</span>
+<span id="cb7-57"><a href="#cb7-57" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-58"><a href="#cb7-58" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb7-59"><a href="#cb7-59" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb7-60"><a href="#cb7-60" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Use pandas.cut to bin the data</span></span>
+<span id="cb7-61"><a href="#cb7-61" aria-hidden="true" tabindex="-1"></a>        binned_data <span class="op">=</span> pd.cut(numbers, bins<span class="op">=</span>bins, labels<span class="op">=</span>bin_labels, right<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb7-62"><a href="#cb7-62" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-63"><a href="#cb7-63" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Count the number of occurrences in each bin</span></span>
+<span id="cb7-64"><a href="#cb7-64" aria-hidden="true" tabindex="-1"></a>        bin_counts <span class="op">=</span> binned_data.value_counts().sort_index()</span>
+<span id="cb7-65"><a href="#cb7-65" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb7-66"><a href="#cb7-66" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Plot the bar chart</span></span>
+<span id="cb7-67"><a href="#cb7-67" aria-hidden="true" tabindex="-1"></a>        plt.figure(figsize<span class="op">=</span>(<span class="dv">10</span>, <span class="dv">6</span>))</span>
+<span id="cb7-68"><a href="#cb7-68" aria-hidden="true" tabindex="-1"></a>        ax <span class="op">=</span> bin_counts.plot(kind<span class="op">=</span><span class="st">'bar'</span>, color<span class="op">=</span><span class="st">'skyblue'</span>, edgecolor<span class="op">=</span><span class="st">'black'</span>)</span>
+<span id="cb7-69"><a href="#cb7-69" aria-hidden="true" tabindex="-1"></a>        plt.title(<span class="ss">f'Bar plot for loinc </span><span class="sc">{</span>loinc_code<span class="sc">}</span><span class="ss"> and unit "</span><span class="sc">{</span>unit<span class="sc">}</span><span class="ss">" '</span>)</span>
+<span id="cb7-70"><a href="#cb7-70" aria-hidden="true" tabindex="-1"></a>        plt.xlabel(<span class="st">'Bins'</span>)</span>
+<span id="cb7-71"><a href="#cb7-71" aria-hidden="true" tabindex="-1"></a>        plt.ylabel(<span class="st">'Count'</span>)</span>
+<span id="cb7-72"><a href="#cb7-72" aria-hidden="true" tabindex="-1"></a>        plt.xticks(rotation<span class="op">=</span><span class="dv">45</span>)</span>
+<span id="cb7-73"><a href="#cb7-73" aria-hidden="true" tabindex="-1"></a>        plt.grid(axis<span class="op">=</span><span class="st">'y'</span>, linestyle<span class="op">=</span><span class="st">'--'</span>, alpha<span class="op">=</span><span class="fl">0.7</span>)</span>
+<span id="cb7-74"><a href="#cb7-74" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb7-75"><a href="#cb7-75" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> p <span class="kw">in</span> ax.patches:</span>
+<span id="cb7-76"><a href="#cb7-76" aria-hidden="true" tabindex="-1"></a>            ax.annotate(<span class="bu">str</span>(p.get_height()), (p.get_x() <span class="op">+</span> p.get_width() <span class="op">/</span> <span class="dv">2</span>, p.get_height()),</span>
+<span id="cb7-77"><a href="#cb7-77" aria-hidden="true" tabindex="-1"></a>                ha<span class="op">=</span><span class="st">'center'</span>, va<span class="op">=</span><span class="st">'bottom'</span>)</span>
 <span id="cb7-78"><a href="#cb7-78" aria-hidden="true" tabindex="-1"></a>            </span>
-<span id="cb7-79"><a href="#cb7-79" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Creating plot</span></span>
-<span id="cb7-80"><a href="#cb7-80" aria-hidden="true" tabindex="-1"></a><span class="co">#         plt.boxplot(numbers)</span></span>
-<span id="cb7-81"><a href="#cb7-81" aria-hidden="true" tabindex="-1"></a><span class="co">#         plt.title(f'Box plot for loinc {loinc_code} and unit {unit} ')</span></span>
-<span id="cb7-82"><a href="#cb7-82" aria-hidden="true" tabindex="-1"></a><span class="co">#         plt.xlabel('')</span></span>
-<span id="cb7-83"><a href="#cb7-83" aria-hidden="true" tabindex="-1"></a><span class="co">#         plt.ylabel('Count')</span></span>
-<span id="cb7-84"><a href="#cb7-84" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-85"><a href="#cb7-85" aria-hidden="true" tabindex="-1"></a><span class="co">#         # show plot</span></span>
-<span id="cb7-86"><a href="#cb7-86" aria-hidden="true" tabindex="-1"></a><span class="co">#         plt.show()</span></span>
-<span id="cb7-87"><a href="#cb7-87" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb7-88"><a href="#cb7-88" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb7-89"><a href="#cb7-89" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb7-90"><a href="#cb7-90" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"</span><span class="ch">\n\n</span><span class="st">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb7-79"><a href="#cb7-79" aria-hidden="true" tabindex="-1"></a>        plt.show()</span>
+<span id="cb7-80"><a href="#cb7-80" aria-hidden="true" tabindex="-1"></a>            </span>
+<span id="cb7-81"><a href="#cb7-81" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Creating plot</span></span>
+<span id="cb7-82"><a href="#cb7-82" aria-hidden="true" tabindex="-1"></a><span class="co">#         plt.boxplot(numbers)</span></span>
+<span id="cb7-83"><a href="#cb7-83" aria-hidden="true" tabindex="-1"></a><span class="co">#         plt.title(f'Box plot for loinc {loinc_code} and unit {unit} ')</span></span>
+<span id="cb7-84"><a href="#cb7-84" aria-hidden="true" tabindex="-1"></a><span class="co">#         plt.xlabel('')</span></span>
+<span id="cb7-85"><a href="#cb7-85" aria-hidden="true" tabindex="-1"></a><span class="co">#         plt.ylabel('Count')</span></span>
+<span id="cb7-86"><a href="#cb7-86" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-87"><a href="#cb7-87" aria-hidden="true" tabindex="-1"></a><span class="co">#         # show plot</span></span>
+<span id="cb7-88"><a href="#cb7-88" aria-hidden="true" tabindex="-1"></a><span class="co">#         plt.show()</span></span>
+<span id="cb7-89"><a href="#cb7-89" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb7-90"><a href="#cb7-90" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb7-91"><a href="#cb7-91" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb7-92"><a href="#cb7-92" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"</span><span class="ch">\n\n</span><span class="st">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div id="a93c5303-1e3d-4856-8c0b-67e2413fcbe5" class="cell" data-execution_count="53">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> analyze_values_units_v2(df):</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    df<span class="op">=</span>df.<span class="bu">filter</span>(<span class="op">~</span>pl.col(<span class="st">'NVAL_NUM'</span>).is_null()) <span class="co"># Excluding null values</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    loinc_code <span class="op">=</span> df[<span class="st">'CONCEPT_CD'</span>][<span class="dv">0</span>]</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="co"># display(HTML(f"The loinc code is {loinc_code}"))</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    display(HTML(<span class="ss">f"&lt;div style='font-size:12px; font-weight:bold;'&gt;Definition of loinc </span><span class="sc">{</span>loinc_code<span class="sc">}</span><span class="ss"> is </span><span class="sc">{</span>loinc_df_dict[loinc_code]<span class="sc">}</span><span class="ss">"</span>))</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"Unique units in the loinc code: "</span>,np.unique(df[<span class="st">'UNITS_CD'</span>].to_numpy()))</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    uni_units,units_count <span class="op">=</span> np.unique(df[<span class="st">'UNITS_CD'</span>].to_list(), return_counts <span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">'</span><span class="ch">\n</span><span class="st">'</span>)</span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(pd.DataFrame({<span class="st">"uni_units"</span>:uni_units,<span class="st">"units_count"</span>:units_count}).to_string(index<span class="op">=</span><span class="va">False</span>))</span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"</span><span class="ch">\n</span><span class="st">"</span>)</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>    num_units <span class="op">=</span> <span class="bu">len</span>(uni_units)</span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>    num_units <span class="op">=</span> <span class="bu">len</span>(uni_units)</span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a>    num_rows <span class="op">=</span> (num_units <span class="op">+</span> <span class="dv">1</span>) <span class="op">//</span> <span class="dv">2</span></span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a>    fig, axes <span class="op">=</span> plt.subplots(num_rows, <span class="dv">2</span>, figsize<span class="op">=</span>(<span class="dv">14</span>, <span class="dv">6</span> <span class="op">*</span> num_rows))</span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-23"><a href="#cb8-23" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i,unit <span class="kw">in</span> <span class="bu">enumerate</span>(uni_units):</span>
+<span id="cb8-24"><a href="#cb8-24" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb8-25"><a href="#cb8-25" aria-hidden="true" tabindex="-1"></a>        numbers <span class="op">=</span> df.<span class="bu">filter</span>(pl.col(<span class="st">'UNITS_CD'</span>) <span class="op">==</span> unit).with_columns(</span>
+<span id="cb8-26"><a href="#cb8-26" aria-hidden="true" tabindex="-1"></a>                    pl.col(<span class="st">'NVAL_NUM'</span>).cast(pl.Float64)</span>
+<span id="cb8-27"><a href="#cb8-27" aria-hidden="true" tabindex="-1"></a>                )[<span class="st">'NVAL_NUM'</span>].to_numpy()</span>
+<span id="cb8-28"><a href="#cb8-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-29"><a href="#cb8-29" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Formatting with HTML for larger and bold text</span></span>
+<span id="cb8-30"><a href="#cb8-30" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;div style='font-size:20px; font-weight:bold;'&gt;Statistics for measurement unit: '</span><span class="sc">{</span>unit<span class="sc">}</span><span class="ss">'&lt;/div&gt;"</span>))</span>
+<span id="cb8-31"><a href="#cb8-31" aria-hidden="true" tabindex="-1"></a><span class="co">#         display(HTML(f"&lt;h3&gt;Statistics for measurement unit: &lt;strong&gt;{unit}&lt;/strong&gt;&lt;/h3&gt;"))</span></span>
+<span id="cb8-32"><a href="#cb8-32" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;strong&gt;Total Count:&lt;/strong&gt; </span><span class="sc">{</span><span class="bu">len</span>(numbers)<span class="sc">}</span><span class="ss">"</span>))</span>
+<span id="cb8-33"><a href="#cb8-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-34"><a href="#cb8-34" aria-hidden="true" tabindex="-1"></a>        minimum <span class="op">=</span> <span class="bu">min</span>(numbers)</span>
+<span id="cb8-35"><a href="#cb8-35" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;strong&gt;Minimum:&lt;/strong&gt; </span><span class="sc">{</span>minimum<span class="sc">}</span><span class="ss">"</span>))</span>
+<span id="cb8-36"><a href="#cb8-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-37"><a href="#cb8-37" aria-hidden="true" tabindex="-1"></a>        maximum <span class="op">=</span> <span class="bu">max</span>(numbers)</span>
+<span id="cb8-38"><a href="#cb8-38" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;strong&gt;Maximum:&lt;/strong&gt; </span><span class="sc">{</span>maximum<span class="sc">}</span><span class="ss">"</span>))</span>
+<span id="cb8-39"><a href="#cb8-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-40"><a href="#cb8-40" aria-hidden="true" tabindex="-1"></a>        mean <span class="op">=</span> <span class="bu">sum</span>(numbers) <span class="op">/</span> <span class="bu">len</span>(numbers)</span>
+<span id="cb8-41"><a href="#cb8-41" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;strong&gt;Mean:&lt;/strong&gt; </span><span class="sc">{</span>mean<span class="sc">}</span><span class="ss">"</span>))</span>
+<span id="cb8-42"><a href="#cb8-42" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-43"><a href="#cb8-43" aria-hidden="true" tabindex="-1"></a>        standard_deviation <span class="op">=</span> np.std(numbers)</span>
+<span id="cb8-44"><a href="#cb8-44" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="ss">f"&lt;strong&gt;Standard Deviation:&lt;/strong&gt; </span><span class="sc">{</span>standard_deviation<span class="sc">}</span><span class="ss">"</span>))</span>
+<span id="cb8-45"><a href="#cb8-45" aria-hidden="true" tabindex="-1"></a>        display(HTML(<span class="st">"&lt;br&gt;"</span>))</span>
+<span id="cb8-46"><a href="#cb8-46" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb8-47"><a href="#cb8-47" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">""</span>)</span>
+<span id="cb8-48"><a href="#cb8-48" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb8-49"><a href="#cb8-49" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb8-50"><a href="#cb8-50" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Define bin edges, adding an extra bin for values greater than 10</span></span>
+<span id="cb8-51"><a href="#cb8-51" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span>  unit <span class="op">==</span> <span class="st">'mg/dL'</span> <span class="kw">or</span> unit <span class="op">==</span><span class="st">'mL/min'</span>:</span>
+<span id="cb8-52"><a href="#cb8-52" aria-hidden="true" tabindex="-1"></a>            bins <span class="op">=</span> [<span class="dv">0</span>,<span class="dv">6</span>, <span class="fl">6.5</span>, <span class="dv">15</span>, <span class="dv">100</span>, <span class="dv">126</span>, <span class="dv">140</span>, <span class="dv">240</span>, <span class="bu">float</span>(<span class="st">'inf'</span>)]</span>
+<span id="cb8-53"><a href="#cb8-53" aria-hidden="true" tabindex="-1"></a>            bin_labels <span class="op">=</span> [</span>
+<span id="cb8-54"><a href="#cb8-54" aria-hidden="true" tabindex="-1"></a>                <span class="st">"0-6"</span>, <span class="st">"6-6.5"</span>, <span class="st">"6.5-15"</span>, <span class="st">"15-100"</span>, <span class="st">"100-126"</span>,<span class="st">"126-140"</span>,<span class="st">'140-240'</span> ,<span class="st">"240+"</span></span>
+<span id="cb8-55"><a href="#cb8-55" aria-hidden="true" tabindex="-1"></a>            ]</span>
+<span id="cb8-56"><a href="#cb8-56" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
+<span id="cb8-57"><a href="#cb8-57" aria-hidden="true" tabindex="-1"></a>            </span>
+<span id="cb8-58"><a href="#cb8-58" aria-hidden="true" tabindex="-1"></a>            bins <span class="op">=</span> [<span class="dv">0</span>, <span class="dv">2</span>, <span class="dv">4</span>, <span class="dv">6</span>, <span class="fl">6.5</span>, <span class="dv">8</span>, <span class="dv">10</span>, <span class="dv">20</span>,<span class="dv">100</span>, <span class="bu">float</span>(<span class="st">'inf'</span>)]</span>
+<span id="cb8-59"><a href="#cb8-59" aria-hidden="true" tabindex="-1"></a>            bin_labels <span class="op">=</span> [</span>
+<span id="cb8-60"><a href="#cb8-60" aria-hidden="true" tabindex="-1"></a>                <span class="st">"0-2"</span>, <span class="st">"2-4"</span>, <span class="st">"4-6"</span>, <span class="st">"6-6.5"</span>, <span class="st">"6.5-8"</span>, <span class="st">"8-10"</span>, <span class="st">"10-20"</span>,<span class="st">"20-100"</span>, <span class="st">"100+"</span></span>
+<span id="cb8-61"><a href="#cb8-61" aria-hidden="true" tabindex="-1"></a>            ]</span>
+<span id="cb8-62"><a href="#cb8-62" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-63"><a href="#cb8-63" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb8-64"><a href="#cb8-64" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb8-65"><a href="#cb8-65" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Use pandas.cut to bin the data</span></span>
+<span id="cb8-66"><a href="#cb8-66" aria-hidden="true" tabindex="-1"></a>        binned_data <span class="op">=</span> pd.cut(numbers, bins<span class="op">=</span>bins, labels<span class="op">=</span>bin_labels, right<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb8-67"><a href="#cb8-67" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-68"><a href="#cb8-68" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Count the number of occurrences in each bin</span></span>
+<span id="cb8-69"><a href="#cb8-69" aria-hidden="true" tabindex="-1"></a>        bin_counts <span class="op">=</span> binned_data.value_counts().sort_index()</span>
+<span id="cb8-70"><a href="#cb8-70" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb8-71"><a href="#cb8-71" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Plot the bar chart</span></span>
+<span id="cb8-72"><a href="#cb8-72" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Plot the bar chart</span></span>
+<span id="cb8-73"><a href="#cb8-73" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Determine subplot position</span></span>
+<span id="cb8-74"><a href="#cb8-74" aria-hidden="true" tabindex="-1"></a>        row, col <span class="op">=</span> <span class="bu">divmod</span>(i, <span class="dv">2</span>)</span>
+<span id="cb8-75"><a href="#cb8-75" aria-hidden="true" tabindex="-1"></a>        ax <span class="op">=</span> axes[row, col] <span class="cf">if</span> num_rows <span class="op">&gt;</span> <span class="dv">1</span> <span class="cf">else</span> axes[col]</span>
+<span id="cb8-76"><a href="#cb8-76" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb8-77"><a href="#cb8-77" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Plot the bar chart</span></span>
+<span id="cb8-78"><a href="#cb8-78" aria-hidden="true" tabindex="-1"></a>        bin_counts.plot(kind<span class="op">=</span><span class="st">'bar'</span>, color<span class="op">=</span><span class="st">'skyblue'</span>, edgecolor<span class="op">=</span><span class="st">'black'</span>, ax<span class="op">=</span>ax)</span>
+<span id="cb8-79"><a href="#cb8-79" aria-hidden="true" tabindex="-1"></a>        ax.set_title(<span class="ss">f'Bar plot for unit "</span><span class="sc">{</span>unit<span class="sc">}</span><span class="ss">"'</span>)</span>
+<span id="cb8-80"><a href="#cb8-80" aria-hidden="true" tabindex="-1"></a>        ax.set_xlabel(<span class="st">'Bins'</span>)</span>
+<span id="cb8-81"><a href="#cb8-81" aria-hidden="true" tabindex="-1"></a>        ax.set_ylabel(<span class="st">'Count'</span>)</span>
+<span id="cb8-82"><a href="#cb8-82" aria-hidden="true" tabindex="-1"></a>        ax.set_xticklabels(bin_labels, rotation<span class="op">=</span><span class="dv">45</span>)</span>
+<span id="cb8-83"><a href="#cb8-83" aria-hidden="true" tabindex="-1"></a>        ax.grid(axis<span class="op">=</span><span class="st">'y'</span>, linestyle<span class="op">=</span><span class="st">'--'</span>, alpha<span class="op">=</span><span class="fl">0.7</span>)</span>
+<span id="cb8-84"><a href="#cb8-84" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb8-85"><a href="#cb8-85" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> p <span class="kw">in</span> ax.patches:</span>
+<span id="cb8-86"><a href="#cb8-86" aria-hidden="true" tabindex="-1"></a>            ax.annotate(<span class="bu">str</span>(p.get_height()), (p.get_x() <span class="op">+</span> p.get_width() <span class="op">/</span> <span class="dv">2</span>, p.get_height()),</span>
+<span id="cb8-87"><a href="#cb8-87" aria-hidden="true" tabindex="-1"></a>                ha<span class="op">=</span><span class="st">'center'</span>, va<span class="op">=</span><span class="st">'bottom'</span>)</span>
+<span id="cb8-88"><a href="#cb8-88" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-89"><a href="#cb8-89" aria-hidden="true" tabindex="-1"></a>    plt.subplots_adjust(hspace<span class="op">=</span><span class="fl">0.5</span>)</span>
+<span id="cb8-90"><a href="#cb8-90" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb8-91"><a href="#cb8-91" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Remove any unused subplots</span></span>
+<span id="cb8-92"><a href="#cb8-92" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> j <span class="kw">in</span> <span class="bu">range</span>(i <span class="op">+</span> <span class="dv">1</span>, num_rows <span class="op">*</span> <span class="dv">2</span>):</span>
+<span id="cb8-93"><a href="#cb8-93" aria-hidden="true" tabindex="-1"></a>        fig.delaxes(axes.flatten()[j])</span>
+<span id="cb8-94"><a href="#cb8-94" aria-hidden="true" tabindex="-1"></a>    plt.tight_layout()</span>
+<span id="cb8-95"><a href="#cb8-95" aria-hidden="true" tabindex="-1"></a>    plt.show()</span>
+<span id="cb8-96"><a href="#cb8-96" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb8-97"><a href="#cb8-97" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb8-98"><a href="#cb8-98" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb8-99"><a href="#cb8-99" aria-hidden="true" tabindex="-1"></a>        </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
 </section>
@@ -276,7 +382,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="source-httpsprofessional.diabetes.orgglucose_calc">source: https://professional.diabetes.org/glucose_calc</h3>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><img src="a1c_check_files/figure-html/15162e0d-1-image.png" class="img-fluid figure-img"></p>
+<p><img src="a1c_check_files/figure-html/15162e0d-2-image.png" class="img-fluid figure-img"></p>
+<figcaption>image.png</figcaption>
+</figure>
+</div>
+</section>
+<section id="mmolmol-conversion" class="level3">
+<h3 class="anchored" data-anchor-id="mmolmol-conversion">mmol/mol conversion</h3>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="a1c_check_files/figure-html/15162e0d-1-53b3ac14-b89d-4538-9539-c4cd0c2bf2a1.png" class="img-fluid figure-img"></p>
 <figcaption>image.png</figcaption>
 </figure>
 </div>
@@ -284,10 +399,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="for-loinc-code-4548-4" class="level1">
 <h1>For loinc code: 4548-4</h1>
-<div id="45b8939b" class="cell" data-execution_count="17">
+<section id="observations-for-unit-mgdl-the-values-are-in-order-of-100s-similar-to" class="level3">
+<h3 class="anchored" data-anchor-id="observations-for-unit-mgdl-the-values-are-in-order-of-100s-similar-to">Observations: for unit ‘mg/dL’ the values are in order of 100’s similar to</h3>
+<div id="45b8939b" class="cell" data-execution_count="54">
 <details class="code-fold">
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>analyze_values_units(test_df.<span class="bu">filter</span>(pl.col(<span class="st">'CONCEPT_CD'</span>)<span class="op">==</span><span class="st">'LOINC:4548-4'</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>analyze_values_units_v2(test_df.<span class="bu">filter</span>(pl.col(<span class="st">'CONCEPT_CD'</span>)<span class="op">==</span><span class="st">'LOINC:4548-4'</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output cell-output-display">
 <div style="font-size:12px; font-weight:bold;">Definition of loinc LOINC:4548-4 is Hemoglobin A1c/Hemoglobin.total in Blood
@@ -339,18 +456,6 @@ uni_units  units_count
 <pre><code></code></pre>
 </div>
 <div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-9-output-11.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
-</div>
-<div class="cell-output cell-output-display">
 <div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: 'F'</div>
 </div>
 <div class="cell-output cell-output-display">
@@ -373,18 +478,6 @@ uni_units  units_count
 </div>
 <div class="cell-output cell-output-stdout">
 <pre><code></code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-9-output-21.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: 'N'</div>
@@ -411,18 +504,6 @@ uni_units  units_count
 <pre><code></code></pre>
 </div>
 <div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-9-output-31.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
-</div>
-<div class="cell-output cell-output-display">
 <div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: 'NI'</div>
 </div>
 <div class="cell-output cell-output-display">
@@ -445,18 +526,6 @@ uni_units  units_count
 </div>
 <div class="cell-output cell-output-stdout">
 <pre><code></code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-9-output-41.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: 'OT'</div>
@@ -483,18 +552,6 @@ uni_units  units_count
 <pre><code></code></pre>
 </div>
 <div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-9-output-51.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
-</div>
-<div class="cell-output cell-output-display">
 <div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: 'S'</div>
 </div>
 <div class="cell-output cell-output-display">
@@ -517,18 +574,6 @@ uni_units  units_count
 </div>
 <div class="cell-output cell-output-stdout">
 <pre><code></code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-9-output-61.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: 'T'</div>
@@ -555,18 +600,6 @@ uni_units  units_count
 <pre><code></code></pre>
 </div>
 <div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-9-output-71.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
-</div>
-<div class="cell-output cell-output-display">
 <div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: 'g/dL'</div>
 </div>
 <div class="cell-output cell-output-display">
@@ -589,18 +622,6 @@ uni_units  units_count
 </div>
 <div class="cell-output cell-output-stdout">
 <pre><code></code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-9-output-81.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: 'mL'</div>
@@ -627,18 +648,6 @@ uni_units  units_count
 <pre><code></code></pre>
 </div>
 <div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-9-output-91.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
-</div>
-<div class="cell-output cell-output-display">
 <div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: 'mL/dL'</div>
 </div>
 <div class="cell-output cell-output-display">
@@ -661,18 +670,6 @@ uni_units  units_count
 </div>
 <div class="cell-output cell-output-stdout">
 <pre><code></code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-9-output-101.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: 'mL/min'</div>
@@ -699,18 +696,6 @@ uni_units  units_count
 <pre><code></code></pre>
 </div>
 <div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-9-output-111.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
-</div>
-<div class="cell-output cell-output-display">
 <div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: 'mg/dL'</div>
 </div>
 <div class="cell-output cell-output-display">
@@ -733,18 +718,6 @@ uni_units  units_count
 </div>
 <div class="cell-output cell-output-stdout">
 <pre><code></code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-9-output-121.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: 'mmol/mol'</div>
@@ -773,28 +746,25 @@ uni_units  units_count
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-9-output-131.png" class="img-fluid figure-img"></p>
+<p><img src="a1c_check_files/figure-html/cell-10-output-107.png" class="img-fluid figure-img"></p>
 </figure>
 </div>
 </div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
-</div>
 </div>
 </div></section>
+</section>
 <section id="for-loinc-code-17856-6" class="level1">
 <h1>For loinc code: 17856-6</h1>
-<div id="c2628fb6" class="cell" data-execution_count="11">
+<div id="c2628fb6" class="cell" data-execution_count="55">
 <details class="code-fold">
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>analyze_values_units(test_df.<span class="bu">filter</span>(pl.col(<span class="st">'CONCEPT_CD'</span>)<span class="op">==</span><span class="st">'LOINC:17856-6'</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>analyze_values_units_v2(test_df.<span class="bu">filter</span>(pl.col(<span class="st">'CONCEPT_CD'</span>)<span class="op">==</span><span class="st">'LOINC:17856-6'</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
+<div class="cell-output cell-output-display">
+<div style="font-size:12px; font-weight:bold;">Definition of loinc LOINC:17856-6 is Hemoglobin A1c/Hemoglobin.total in Blood by HPLC
+</div>
 <div class="cell-output cell-output-stdout">
-<pre><code>The loinc code is  LOINC:17856-6
-Definition of loinc LOINC:17856-6 is Hemoglobin A1c/Hemoglobin.total in Blood by HPLC
-Unique units in the loinc code:  ['%' 'NI' 'mg/dL']
+<pre><code>Unique units in the loinc code:  ['%' 'NI' 'mg/dL']
 
 
 uni_units  units_count
@@ -829,18 +799,6 @@ uni_units  units_count
 <pre><code></code></pre>
 </div>
 <div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-10-output-10.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
-</div>
-<div class="cell-output cell-output-display">
 <div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: 'NI'</div>
 </div>
 <div class="cell-output cell-output-display">
@@ -863,18 +821,6 @@ uni_units  units_count
 </div>
 <div class="cell-output cell-output-stdout">
 <pre><code></code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-10-output-20.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: 'mg/dL'</div>
@@ -903,28 +849,24 @@ uni_units  units_count
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-10-output-30.png" class="img-fluid figure-img"></p>
+<p><img src="a1c_check_files/figure-html/cell-11-output-27.png" class="img-fluid figure-img"></p>
 </figure>
 </div>
 </div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
 </div>
-</div>
-</section>
+</div></section>
 <section id="for-loinc-code-4549-2" class="level1">
 <h1>For loinc code: 4549-2</h1>
-<div id="c1617a1f" class="cell" data-execution_count="124">
+<div id="c1617a1f" class="cell" data-execution_count="56">
 <details class="code-fold">
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>analyze_values_units(test_df.<span class="bu">filter</span>(pl.col(<span class="st">'CONCEPT_CD'</span>)<span class="op">==</span><span class="st">'LOINC:4549-2'</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>analyze_values_units_v2(test_df.<span class="bu">filter</span>(pl.col(<span class="st">'CONCEPT_CD'</span>)<span class="op">==</span><span class="st">'LOINC:4549-2'</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
+<div class="cell-output cell-output-display">
+<div style="font-size:12px; font-weight:bold;">Definition of loinc LOINC:4549-2 is Hemoglobin A1c/Hemoglobin.total in Blood by Electrophoresis
+</div>
 <div class="cell-output cell-output-stdout">
-<pre><code>The loinc code is  LOINC:4549-2
-Definition of loinc LOINC:4549-2 is Hemoglobin A1c/Hemoglobin.total in Blood by Electrophoresis
-Unique units in the loinc code:  ['%']
+<pre><code>Unique units in the loinc code:  ['%']
 
 
 uni_units  units_count
@@ -933,7 +875,7 @@ uni_units  units_count
 </code></pre>
 </div>
 <div class="cell-output cell-output-display">
-<div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: %</div>
+<div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: '%'</div>
 </div>
 <div class="cell-output cell-output-display">
 <strong>Total Count:</strong> 3575
@@ -959,28 +901,24 @@ uni_units  units_count
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-11-output-10.png" class="img-fluid figure-img"></p>
+<p><img src="a1c_check_files/figure-html/cell-12-output-11.png" class="img-fluid figure-img"></p>
 </figure>
 </div>
 </div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
 </div>
-</div>
-</section>
+</div></section>
 <section id="for-loinc-code-41995-2" class="level1">
 <h1>For Loinc Code: 41995-2</h1>
-<div id="7a7b681e" class="cell" data-execution_count="125">
+<div id="7a7b681e" class="cell" data-execution_count="57">
 <details class="code-fold">
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a>analyze_values_units(test_df.<span class="bu">filter</span>(pl.col(<span class="st">'CONCEPT_CD'</span>)<span class="op">==</span><span class="st">'LOINC:41995-2'</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>analyze_values_units_v2(test_df.<span class="bu">filter</span>(pl.col(<span class="st">'CONCEPT_CD'</span>)<span class="op">==</span><span class="st">'LOINC:41995-2'</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
+<div class="cell-output cell-output-display">
+<div style="font-size:12px; font-weight:bold;">Definition of loinc LOINC:41995-2 is Hemoglobin A1c [Mass/volume] in Blood
+</div>
 <div class="cell-output cell-output-stdout">
-<pre><code>The loinc code is  LOINC:41995-2
-Definition of loinc LOINC:41995-2 is Hemoglobin A1c [Mass/volume] in Blood
-Unique units in the loinc code:  ['%' 'mg/dL']
+<pre><code>Unique units in the loinc code:  ['%' 'mg/dL']
 
 
 uni_units  units_count
@@ -990,7 +928,7 @@ uni_units  units_count
 </code></pre>
 </div>
 <div class="cell-output cell-output-display">
-<div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: %</div>
+<div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: '%'</div>
 </div>
 <div class="cell-output cell-output-display">
 <strong>Total Count:</strong> 77
@@ -1014,19 +952,7 @@ uni_units  units_count
 <pre><code></code></pre>
 </div>
 <div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-12-output-10.png" class="img-fluid figure-img"></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: mg/dL</div>
+<div style="font-size:20px; font-weight:bold;">Statistics for measurement unit: 'mg/dL'</div>
 </div>
 <div class="cell-output cell-output-display">
 <strong>Total Count:</strong> 186
@@ -1052,17 +978,12 @@ uni_units  units_count
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="a1c_check_files/figure-html/cell-12-output-20.png" class="img-fluid figure-img"></p>
+<p><img src="a1c_check_files/figure-html/cell-13-output-19.png" class="img-fluid figure-img"></p>
 </figure>
 </div>
 </div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-
-</code></pre>
 </div>
-</div>
-</section>
+</div></section>
 
 </main>
 <!-- /main column -->
