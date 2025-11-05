@@ -1,3 +1,13 @@
+"""
+Author: Chandra Harsha Rachabathuni
+Date: 2025-10-23
+Description: Python file with helper functions required for running "data_connector_i2b2.py".
+Version: 1.0
+
+TO-DO:
+1. Doc strings for remaining functions
+"""
+
 ### importing required libraries ###
 import polars as pl
 import requests

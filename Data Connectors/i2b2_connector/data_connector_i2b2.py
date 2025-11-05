@@ -10,11 +10,12 @@ TO-DO:
 3. Skip feature engineering
 4. Move varibles to i2b2 config (there are lots of variables to move)
 5. Scaling features according to model type to be used
+6. Add checks for bmi and bp units
 """
 
 import i2b2_config
 from helper_functions import check_columns,  meds_rxcui_to_api, get_active_ingredient
-from helper_functions import read_icd_mappings, get_initial_char_for_icd_codes
+from helper_functions import read_icd_mappings, get_phecode_from_concept_cd
 from helper_functions import clean_prefix_data
 from helper_functions import custom_height_aggregator
 
@@ -107,15 +108,12 @@ class script_config:
     # data format of input files
     file_format = args.file_format
 
-    # column name checks #
-    patient_file_columns = i2b2_config.patient_columns
-
     # Medications transformation argument 
     medications_transformation = args.medication_tranformation
 
 
-    # Final data columns required #
-    final_columns_required = i2b2_config.modeling_columns
+    # Final data columns required # ### REMOVE LATER ####
+    # final_columns_required = i2b2_config.modeling_columns
 
 
 ############# Main code to run #################
@@ -138,23 +136,14 @@ if __name__ == '__main__':
         cvs_df = pl.scan_csv(script_config.cvs_file)
 
     # Diagnoses mapping functions
-    phewas_mapping_dicts = {"icd10_phe" : pl.read_csv('./icd_code_to_phecode/Phecode_map_v1_2_icd10cm_beta.csv'),
-               "icd9_phe_v1" :  pl.read_csv('./icd_code_to_phecode/phecode_map_v1_2_icd9.csv',infer_schema_length=100000),
-               "icd9_phe_v2" : pyreadr.read_r("./icd_code_to_phecode/phemap (1).rda")['phemap'].drop_duplicates(subset=['icd9']),
-                "icd9_to_10_mapping_dict" : read_icd_mappings('./icd_code_to_phecode/icd9to10dictionary.txt') 
+    phewas_mapping_dicts = {"icd10_phe" : pl.read_csv(i2b2_config.icd10_phe),
+               "icd9_phe_v1" :  pl.read_csv(i2b2_config.icd9_phe_v1, infer_schema_length=100000),
+               "icd9_phe_v2" : pyreadr.read_r(i2b2_config.icd9_phe_v2)['phemap'].drop_duplicates(subset=['icd9']),
+                "icd9_to_10_mapping_dict" : read_icd_mappings(i2b2_config.icd9_to_icd10_mapping) 
     }
 
     # Required lab results for modeling
     lab_loinc_and_unit_tuple = []
-
-
-    #### Column names validation ####
-    check_columns(cohort_df, i2b2_config.cohort_columns)
-    check_columns(lab_df, i2b2_config.lab_results_columns)
-    check_columns(diag_df, i2b2_config.diag_columns)
-    check_columns(meds_df, i2b2_config.medication_columns)
-    check_columns(bmi_bp_df, i2b2_config.bmi_bp_columns)
-    check_columns(cvs_df, i2b2_config.cvs_columns)
 
     ##### Required columns from each dataset for modeling ####
     target_medication_columns = i2b2_config.target_medication_columns
@@ -163,6 +152,21 @@ if __name__ == '__main__':
     target_bmi_bp_columns = i2b2_config.target_bmi_bp_columns
     target_cvs_columns = i2b2_config.target_cvs_columns
 
+
+    ############################### Data Validation & Checks ###############################
+    
+    # Column check if certain columns exist in the respective datasets
+    check_columns(cohort_df, i2b2_config.cohort_columns)
+    check_columns(lab_df, i2b2_config.lab_results_columns)
+    check_columns(diag_df, i2b2_config.diag_columns)
+    check_columns(meds_df, i2b2_config.medication_columns)
+    check_columns(bmi_bp_df, i2b2_config.bmi_bp_columns)
+    check_columns(cvs_df, i2b2_config.cvs_columns)
+
+
+
+
+    
     ############################### Data transformation for required columns ############################### 
 
     ############## Transform medications ##############
@@ -179,7 +183,7 @@ if __name__ == '__main__':
     med_ignore_patient_num = np.unique(meds_df.filter(pl.col('Active_ingrident').is_in(medications_to_drop)).collect()['PATIENT_NUM'].to_list())
 
     ############## Transform diagnoses codes to PheWas codes/ATC codes ##############
-    diag_df = diag_df.with_columns(pl.col("phecode_map").map_elements(get_initial_char_for_icd_codes, return_dtype = pl.Utf8).alias("phecode_map"))
+    diag_df = diag_df.with_columns(pl.col("CONCEPT_CD").map_elements(get_phecode_from_concept_cd, return_dtype = pl.Utf8).alias("phecode_map"))
 
     ############## Transform lab results: Filter required lab results and unit standardization and aggregation (median) ##############
 
@@ -193,6 +197,7 @@ if __name__ == '__main__':
         pl.struct(["LabLOINC", "Units"]).is_in(dict_loinc_unit)
     )
     lab_df = lab_df.group_by(['PATIENT_NUM','LabLOINC']).agg(pl.col('Result_Number').median().alias('Result_Number'))
+
 
 
     ############## Transform bmi and bp ##############
@@ -254,7 +259,7 @@ if __name__ == '__main__':
                                   )
     
     ## Race  ##
-    cohort_df = cohort_df.with_columns(pl.col('Race_CD'))
+    # cohort_df = cohort_df.with_columns(pl.col('Race_CD'))
 
     # Values to be replaced
     values_to_replace = ["06", "07"]
@@ -321,8 +326,6 @@ if __name__ == '__main__':
     temp_df = temp_df.join(lab_results_pivot_df, on = 'PATIENT_NUM', how = 'left')
     temp_df = temp_df.fill_null(-100)
 
-    
-
     temp_df = temp_df.join(bmi_ht_wt_df, on = 'PATIENT_NUM', how = 'left')
     temp_df = temp_df.fill_null(-100)
     temp_df = temp_df.join(dia_bp_df, on = 'PATIENT_NUM', how = 'left')
@@ -349,4 +352,3 @@ if __name__ == '__main__':
 
 
     df_final_modeing_dataset = df_final_modeing_dataset.filter(pl.col(i2b2_config.target_features))
-
