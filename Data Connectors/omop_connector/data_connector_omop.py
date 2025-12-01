@@ -5,18 +5,19 @@ Description: Python script to transform omop raw data into data required for typ
 Version: 1.0
 
 TO-DO:
-1. Add data validator function in helper functions
+1. Add data validator function in helper functions (units validator for sys and dia bp)
 2. Verbose functionality
 3. Skip feature engineering
 4. Move varibles to omop config (there are lots of variables to move)
 5. Scaling features according to model type to be used
+6. Demograpics change in omop compared to i2b2
 """
 
 import omop_config
-from helper_functions import check_columns,  meds_rxcui_to_api, get_active_ingredient
+from helper_functions import check_columns,  meds_rxcui_to_api, get_active_ingredient, normalize_active_ingridents
 from helper_functions import read_icd_mappings, get_initial_char_for_icd_codes
 from helper_functions import clean_prefix_data
-from helper_functions import custom_height_aggregator
+from helper_functions import custom_height_aggregator,convert_wt_kg_to_lb
 
 import argparse
 import polars as pl
@@ -85,6 +86,12 @@ parse.add_arguments('--output_file_format',
                     choices = ['parquet','cvs'], 
                     help = 'Argument that allows to change output file format(csv or parquet)')
 
+parse.add_arguments('--mode',
+                   type = str,
+                   default = 'predict',
+                    choices = ['predict','model'], 
+                    help = 'Argument that allows to create dataset for modeling or prediction')
+
 
 parse.add_arguments('-v','--verbose',action = argparse.BooleanOptionalAction, default = False,
                     help = 'Enable verbose mode (optional)')
@@ -124,38 +131,43 @@ class script_config:
 if __name__ == '__main__':
 
     ####### Loading all require files(Features and data for helper functions) #######
+    if script_config.verbose:
+        print("Loading the required dataset files.")
     if script_config.file_format == 'pl':
         cohort_df = pl.scan_parquet(script_config.patient_file)
         lab_df = pl.scan_parquet(script_config.labresults_file)
         diag_df = pl.scan_parquet(script_config.diag_file)
         meds_df = pl.scan_parquet(script_config.med_file)
-        bmi_bp_df = pl.scan_parquet(script_config.bmi_and_bp_file)
         cvs_df = pl.scan_parquet(script_config.cvs_file)
     else:
         cohort_df = pl.scan_csv(script_config.patient_file)
         lab_df = pl.scan_csv(script_config.labresults_file)
         diag_df = pl.scan_csv(script_config.diag_file)
         meds_df = pl.scan_csv(script_config.med_file)
-        bmi_bp_df = pl.scan_csv(script_config.bmi_and_bp_file)
         cvs_df = pl.scan_csv(script_config.cvs_file)
 
+
+    if script_config.verbose:
+        print("Loading the files required for mapping icd codes to phewas.")
+
     # Diagnoses mapping functions
-    phewas_mapping_dicts = {"icd10_phe" : pl.read_csv('./icd_code_to_phecode/Phecode_map_v1_2_icd10cm_beta.csv'),
-               "icd9_phe_v1" :  pl.read_csv('./icd_code_to_phecode/phecode_map_v1_2_icd9.csv',infer_schema_length=100000),
-               "icd9_phe_v2" : pyreadr.read_r("./icd_code_to_phecode/phemap (1).rda")['phemap'].drop_duplicates(subset=['icd9']),
-                "icd9_to_10_mapping_dict" : read_icd_mappings('./icd_code_to_phecode/icd9to10dictionary.txt') 
+    phewas_mapping_dicts = {"icd10_phe" : pl.read_csv(omop_config.icd10_phe),
+               "icd9_phe_v1" :  pl.read_csv(omop_config.icd9_phe_v1, infer_schema_length=100000),
+               "icd9_phe_v2" : pyreadr.read_r(omop_config.icd9_phe_v2)['phemap'].drop_duplicates(subset=['icd9']),
+                "icd9_to_10_mapping_dict" : read_icd_mappings(omop_config.icd9_to_icd10_mapping) 
     }
 
     # Required lab results for modeling
     lab_loinc_and_unit_tuple = []
 
-
+    if script_config.verbose:
+        print("Column validation across all files(cohort, lab results, diagnoses, medications and cvs)")
     #### Column names validation ####
     check_columns(cohort_df, omop_config.cohort_columns)
     check_columns(lab_df, omop_config.lab_results_columns)
     check_columns(diag_df, omop_config.diag_columns)
     check_columns(meds_df, omop_config.medication_columns)
-    check_columns(bmi_bp_df, omop_config.bmi_bp_columns)
+    # check_columns(bmi_bp_df, omop_config.bmi_bp_columns) #### Not required for omop as bmi and bp are extracted from lab results
     check_columns(cvs_df, omop_config.cvs_columns)
 
     ##### Required columns from each dataset for modeling ####
@@ -169,52 +181,64 @@ if __name__ == '__main__':
 
     ############## Transform medications ##############
     if script_config.medications_transformation == 'api':
-        assert 'Active Ingredient' in meds_df.columns
+        assert 'concept_name' in meds_df.columns
+        meds_df = meds_df.columns(pl.col('concept_name').map_batches(normalize_active_ingridents).alias('Active_ingrident'))
         pass
 
     elif script_config.medications_transformation == 'rxcui_api':
-        meds_df = meds_df.with_columns(pl.col['rxcui'].map_batches(meds_rxcui_to_api).alias('Active_ingrident'))
+        meds_df = meds_df.with_columns(pl.col['concept_id'].map_batches(meds_rxcui_to_api).alias('Active_ingrident'))
 
     # Filtering patients who are on diabetes type 2 medications
     act_list_to_drop = [get_active_ingredient(rxcui) for rxcui in omop_config.ignore_rxnorm_codes]
     medications_to_drop = ["_".join(sublist) if len(sublist) > 1 else sublist[0] for sublist in act_list_to_drop]
-    med_ignore_patient_num = np.unique(meds_df.filter(pl.col('Active_ingrident').is_in(medications_to_drop)).collect()['PATIENT_NUM'].to_list())
+    med_ignore_patient_id = np.unique(meds_df.filter(pl.col('Active_ingrident').is_in(medications_to_drop)).collect()['patient_id'].to_list())
 
     ############## Transform diagnoses codes to PheWas codes/ATC codes ##############
-    diag_df = diag_df.with_columns(pl.col("phecode_map").map_elements(get_initial_char_for_icd_codes, return_dtype = pl.Utf8).alias("phecode_map"))
+    diag_df = diag_df.with_columns((pl.col("vocabulary_id")+':'+pl.col('condition_source_value')).alias('ICD_code'))
+    diag_df = diag_df.with_columns(pl.col("ICD_code").map_elements(get_initial_char_for_icd_codes, return_dtype = pl.Utf8).alias("phecode_map"))
 
     ############## Transform lab results: Filter required lab results and unit standardization and aggregation (median) ##############
 
     # Define keys for the dictionaries
-    keys = ("LabLOINC", "Unit")
+    keys = ("measurement_source_value", "unit_source_value")
+
+    # renaming columns
+    lab_df = lab_df.rename({"measurement_source_value": "LabLOINC", "unit_source_value": "Units","value_source_value":'Result_Number'})
 
     # Convert tuple to list of dictionaries
     dict_loinc_unit = [dict(zip(keys, item)) for item in lab_loinc_and_unit_tuple]
 
-    lab_df = lab_df.filter(
+    lab_final_df = lab_df.filter(
         pl.struct(["LabLOINC", "Units"]).is_in(dict_loinc_unit)
     )
-    lab_df = lab_df.group_by(['PATIENT_NUM','LabLOINC']).agg(pl.col('Result_Number').median().alias('Result_Number'))
+    lab_final_df = lab_final_df.group_by(['patient_id','LabLOINC']).agg(pl.col('Result_Number').median().alias('Result_Number'))
 
 
     ############## Transform bmi and bp ##############
 
     # *** BMI *** 
-    wt_df = bmi_bp_df.filter(pl.col('CONCEPT_CD').str.contains('WT'))
+    wt_df = lab_df.filter(pl.col('LabLOINC').is_in(omop_config.weight_loincs))
+    assert wt_df.select('Units').collect().is_in(['kg','lb']).all(), "weight df units column contains values in other than 'kg' or 'lb'"
+    wt_df =wt_df.with_columns(
+        pl.when(pl.col('Units')=='kg').then(pl.col('Result_Number').map_elements(convert_wt_kg_to_lb).otherwise(pl.col('Result_Number'))).alias('Result_Number')
+    )
     wt_df = wt_df.with_columns(pl.col("NVAL_NUM").cast(pl.Float32))
     wt_df = wt_df.filter((pl.col('NVAL_NUM') > 65) & (pl.col('NVAL_NUM') < 600))
-    average_weight_per_patient = wt_df.group_by("PATIENT_NUM").agg([
+    average_weight_per_patient = wt_df.group_by("patient_id").agg([
         pl.col("NVAL_NUM").median().alias("median_weight")
         ])
     
-    height_df = bmi_bp_df.filter(pl.col('CONCEPT_CD').str.contains('WT'))
+    height_df = lab_df.filter(pl.col('LabLOINC').is_in(omop_config.height_loincs))
     
-    mode_height_df = height_df.group_by("PATIENT_NUM").agg([
-    pl.col("NVAL_NUM").map_elements(custom_height_aggregator, return_dtype = pl.Float32).alias("mode_height")
+    # Asserting units be in inches
+    assert height_df.select('Units').collect().is_in(['in','inches']).all(), "height df units column contains values other than 'inches' or 'in'"
+    
+    mode_height_df = height_df.group_by("patient_id").agg([
+    pl.col("Result_Number").map_elements(custom_height_aggregator, return_dtype = pl.Float32).alias("mode_height")
     ])
 
     # Join the DataFrames on 'patient_id'
-    bmi_ht_wt_df = mode_height_df.join(average_weight_per_patient, on="PATIENT_NUM", how="inner")
+    bmi_ht_wt_df = mode_height_df.join(average_weight_per_patient, on="patient_id", how="inner")
 
     # Calculate BMI
     bmi_ht_wt_df = bmi_ht_wt_df.with_columns(
@@ -222,29 +246,31 @@ if __name__ == '__main__':
     )
 
     # ** Diastolic and systolic BP **
-    dia_bp_df = bmi_bp_df.filter(pl.col('CONCEPT_CD').str.contains('VIT\|DIA'))
-    sys_bp_df = bmi_bp_df.filter(pl.col('CONCEPT_CD').str.contains('VIT\|SYS'))
-    dia_bp_df = bmi_bp_df.with_columns(pl.col('NVAL_NUM').cast(pl.Float32).alias('NVAL_NUM'))
-    sys_bp_df = bmi_bp_df.with_columns(pl.col('NVAL_NUM').cast(pl.Float32).alias('NVAL_NUM'))
+    dia_bp_df = lab_df.filter(pl.col('LabLOINC').is_in(omop_config.diastolic_loinc_codes))
+    sys_bp_df = lab_df.filter(pl.col('LabLOINC').is_in(omop_config.systolic_loinc_codes))
+    dia_bp_df = dia_bp_df.with_columns(pl.col('Result_Number').cast(pl.Float32).alias('Result_Number'))
+    sys_bp_df = sys_bp_df.with_columns(pl.col('Result_Number').cast(pl.Float32).alias('Result_Number'))
 
-    dia_bp_df  = dia_bp_df.filter((pl.col('NVAL_NUM') > 40) &
-                             (pl.col('NVAL_NUM') < 160))
-    sys_bp_df  = sys_bp_df.filter((pl.col('NVAL_NUM') > 60) &
-                                (pl.col('NVAL_NUM') < 190))
+
+    #### Add units validation for dia and sys bp
+
+    dia_bp_df  = dia_bp_df.filter((pl.col('Result_Number') > 40) &
+                             (pl.col('Result_Number') < 160))
+    sys_bp_df  = sys_bp_df.filter((pl.col('Result_Number') > 60) &
+                                (pl.col('Result_Number') < 190))
     
-    average_dia_bp_per_patient = dia_bp_df.group_by("PATIENT_NUM").agg([
-        pl.col("NVAL_NUM").mean().alias("median_diastolic_value"),
+    average_dia_bp_per_patient = dia_bp_df.group_by("patient_id").agg([
+        pl.col("Result_Number").mean().alias("median_diastolic_value"),
 
     ])
 
-    average_sys_bp_per_patient = sys_bp_df.group_by("PATIENT_NUM").agg([
-        pl.col("NVAL_NUM").mean().alias("median_systolic_value"),
+    average_sys_bp_per_patient = sys_bp_df.group_by("patient_id").agg([
+        pl.col("Result_Number").mean().alias("median_systolic_value"),
 
     ])
 
-    ############## Transform patient/cohort file ##############
-
-    cohort_df = cohort_df.with_columns(pl.col('Age_at_encounter_date').map_elements(lambda x : '18-34' if x <= 34 \
+    ############## Transform patient/cohort file (demographics) ##############
+    cohort_df = cohort_df.with_columns(pl.col('age_at_index').map_elements(lambda x : '18-34' if x <= 34 \
                                                         else '35-44' if 35<=x<=44 else '45-54'\
                                                         if 45<=x<=54 else '55-64' if 55<=x<=64 else \
                                                         '65-74' if  65<=x<=74 else '75_older').alias('Age_group'))
@@ -262,6 +288,7 @@ if __name__ == '__main__':
     values_to_replace = ["06", "07"]
     replacement_value = "UN"
 
+    #*************** change code for handling demographics **************
     cohort_df = cohort_df.with_columns([
     pl.col('Sex_CD').str.replace(r'^(NI|OT|UN)$', 'UNK', literal=False).alias('Sex_CD'),
     pl.col('Race_CD').str.replace(r'^(NI|OT|UN)$', 'UNK', literal=False).alias('Race_CD'),
@@ -289,50 +316,50 @@ if __name__ == '__main__':
 
     ####### Pivoting and joining the datasets #######
     meds_df = meds_df.with_columns(pl.lit(1).alias('usage'))
-    medications_pivot_df = meds_df.pivot(on = 'Active_ingrident', index = 'PATIENT_NUM', values = 'usage', aggregate_function = 'max')
+    medications_pivot_df = meds_df.pivot(on = 'Active_ingrident', index = 'patient_id', values = 'usage', aggregate_function = 'max')
 
-    lab_results_pivot_df = lab_df.pivot(on = 'LabLOINC', index = 'PATIENT_NUM', values = 'Result_Number')
+    lab_results_pivot_df = lab_df.pivot(on = 'LabLOINC', index = 'patient_id', values = 'Result_Number')
     
     diag_df = diag_df.with_columns(pl.lit(1).alias('Usage'))
-    diagnoses_pivot_df = diag_df.pivot(on = 'phecode_map', index = 'PATIENT_NUM', values = 'Usage', aggregate_function = 'max')
+    diagnoses_pivot_df = diag_df.pivot(on = 'phecode_map', index = 'patient_id', values = 'Usage', aggregate_function = 'max')
 
     community_vital_pivot_df = cvs_df.pivot(on = 'Indicator', 
-                                                    index ='PATIENT_NUM', 
+                                                    index ='patient_id', 
                                                     values ='FACT', 
                                                     aggregate_function = 'mean')
     community_vital_pivot_df = community_vital_pivot_df.fill_null(-100)
 
 
     ###### Removing patients with active ingredient of diabetes from required patient ids #####
-    med_pids = np.unique(meds_df.select(['PATIENT_NUM']).collect()['PATIENT_NUM'].to_list())
-    dx_pids = np.unique(diag_df.select(['PATIENT_NUM']).collect()['PATIENT_NUM'].to_list())
-    lab_pid = np.unique(lab_df.select(['PATIENT_NUM']).collect()['PATIENT_NUM'].to_list())
+    med_pids = np.unique(meds_df.select(['patient_id']).collect()['patient_id'].to_list())
+    dx_pids = np.unique(diag_df.select(['patient_id']).collect()['patient_id'].to_list())
+    lab_pid = np.unique(lab_df.select(['patient_id']).collect()['patient_id'].to_list())
     req_patients = set(med_pids) | set(dx_pids) | set(lab_pid)
 
-    req_patients -= set(med_ignore_patient_num)
+    req_patients -= set(med_ignore_patient_id)
 
     ##################### Joining the pivoted feature dataframes #####################
-    cohort_df = cohort_df.filter(pl.col('PATIENT_NUM').is_in(req_patients))
+    cohort_df = cohort_df.filter(pl.col('patient_id').is_in(req_patients))
 
-    temp_df = cohort_df.join(medications_pivot_df, on = 'PATIENT_NUM', how = 'left')
+    temp_df = cohort_df.join(medications_pivot_df, on = 'patient_id', how = 'left')
     temp_df = temp_df.fill_null(0)
 
-    temp_df = temp_df.join(diagnoses_pivot_df, on = 'PATIENT_NUM', how = 'left')
+    temp_df = temp_df.join(diagnoses_pivot_df, on = 'patient_id', how = 'left')
     temp_df = temp_df.fill_null(0)
 
-    temp_df = temp_df.join(lab_results_pivot_df, on = 'PATIENT_NUM', how = 'left')
+    temp_df = temp_df.join(lab_results_pivot_df, on = 'patient_id', how = 'left')
     temp_df = temp_df.fill_null(-100)
 
     
 
-    temp_df = temp_df.join(bmi_ht_wt_df, on = 'PATIENT_NUM', how = 'left')
+    temp_df = temp_df.join(bmi_ht_wt_df, on = 'patient_id', how = 'left')
     temp_df = temp_df.fill_null(-100)
-    temp_df = temp_df.join(dia_bp_df, on = 'PATIENT_NUM', how = 'left')
+    temp_df = temp_df.join(dia_bp_df, on = 'patient_id', how = 'left')
     temp_df = temp_df.fill_null(-100)
-    temp_df = temp_df.join(sys_bp_df, on = 'PATIENT_NUM', how = 'left')
+    temp_df = temp_df.join(sys_bp_df, on = 'patient_id', how = 'left')
     temp_df = temp_df.fill_null(-100)
 
-    temp_df = temp_df.join(cvs_df, on = 'PATIENT_NUM',how ='left')
+    temp_df = temp_df.join(cvs_df, on = 'patient_id',how ='left')
     temp_df = temp_df.fill_null(-100)
 
     # Define the columns to one-hot encode

@@ -44,16 +44,16 @@ parse = argparse.ArgumentParser(description = '''This script is for transforming
                                 ''',
                                 epilog = 'Refer to Github repo Wiki for data requirements')
 
-parse.add_arguments('--data_folder',
+parse.add_argument('--data_folder',
                     type = str, 
                     help = 'Path to the folder that contains all required input files.')
 
-parse.add_arguments('--use_lab_results_aggregation', 
+parse.add_argument('--use_lab_results_aggregation', 
                     action = argparse.BooleanOptionalAction, 
                     default = True, 
                     help = 'Argument that allows lab results aggregation(units filter and median agg). By default, it is True')
 
-parse.add_arguments('--medication_tranformation',
+parse.add_argument('--medication_tranformation',
                     type = str,
                     choices = ['rxcui_api','api'], ### add atc later 
                     help = '''Argument to to choose whether to transform the medications into type.
@@ -63,31 +63,31 @@ parse.add_arguments('--medication_tranformation',
                     3. ATC -> rxcui to ATC''')
 
 
-parse.add_arguments('--file_format',
+parse.add_argument('--file_format',
                    type = str,
                    default = 'parquet',
                    choices = ['csv','parquet'],
                    help = 'Argument to choose file format of input data format. Defualt value is parquet(pl)')
 
-parse.add_arguments('--use_bmi_bp_aggregation',
+parse.add_argument('--use_bmi_bp_aggregation',
                    action = argparse.BooleanOptionalAction, 
                     default = True, 
                     help = 'Argument that allows bmi and bp aggregation(median agg). By default, it is True')
 
 
-parse.add_arguments('--output_before_joining',
+parse.add_argument('--output_before_joining',
                    action = argparse.BooleanOptionalAction, 
                     default = True, 
                     help = 'Argument that allows to write transformed datasets before joining to local')
 
-parse.add_arguments('--output_file_format',
+parse.add_argument('--output_file_format',
                    type = str,
                    default = 'parquet',
                     choices = ['parquet','cvs'], 
                     help = 'Argument that allows to change output file format(csv or parquet)')
 
 
-parse.add_arguments('-v','--verbose',action = argparse.BooleanOptionalAction, default = False,
+parse.add_argument('-v','--verbose',action = argparse.BooleanOptionalAction, default = False,
                     help = 'Enable verbose mode (optional)')
 
 args = parse.parse_args()

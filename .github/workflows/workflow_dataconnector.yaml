@@ -1,0 +1,32 @@
+name: "Data connector i2b2 tester"
+run-name: 'Deploy by @${{ github.actor }} on ${{ github.ref_name }}'
+
+on:
+  push:
+    path:
+      'Data Connectors/i2b2/**'
+
+    jobs:
+      build: 
+        runs-on: ubuntu-latest
+        strategy:
+          matrix:
+            python-version:  ['pypy3.10', "3.10", "3.11", "3.12"]
+        steps:
+        run: 'echo "This job is triggered by event ${{github.event_name}}"'
+        run: 'echo "This job is currently running on ${{runner.os}}"'
+
+        -name: Checkout code
+        uses: actions/checkout@v2
+
+        -name: Install dependencies
+        
+
+    
+
+on:
+  push:
+    path:
+      'Data Connectors/omop/**'
+    jobs:
+
