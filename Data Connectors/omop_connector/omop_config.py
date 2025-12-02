@@ -36,7 +36,7 @@ cvs_fields = ["B19083_001E", # GINI INDEX OF INCOME INEQUALITY
           "B15003_025E"
          ]
 
-
+missing_numerical_replace_val = -10
 
 # Lab results(loincs + required units) includes bmi and bp as well
 
@@ -68,7 +68,7 @@ medication_columns = ['person_id',
 
 cvs_columns = ['person_id'] #needs extraction from aqhs
 
-# Column names required for final model
+# Column names required for final model or modeling dataset
 target_features = ['Age_group', 'azithromycin', 'levothyroxine', 'acyclovir',
        'ceftriaxone', 'phe_401.1', 'phe_271.3', 'phe_41.0', 'phe_278.11',
        #'phe_649.1', 
@@ -77,6 +77,8 @@ target_features = ['Age_group', 'azithromycin', 'levothyroxine', 'acyclovir',
        'median_diastolic_value', 'ACS_MedHHIncome', 'ACS_pctCollGrad',
        'Race_CD_02', 'Race_CD_05', 'Hispanic_CD_Y', 'Gender_CD_M',
        'Gender_CD_W'] + ['LOINC:4548-4', 'LOINC:17856-6']
+
+target_label = ['Outcome']
 
 ###### Other variables ######
 ignore_rxnorm_codes = [
@@ -132,4 +134,33 @@ diastolic_loinc_codes = [
     "8462-4",
     "8496-2"
 ]
+
+diastolic_range = [40,160]
+systolic_range = [60,190]
+
+bmi_range = [15,60]
+height_range = [36,96]
+weight_range = [65,600]
+
+#### Demogrpahics dict ####
+race_map_dict = {
+    "American Indian or Alaska Native": "01",
+    "Asian": "02",
+    "Black or African American": "03",
+    "Native Hawaiian or Other Pacific Islander": "04",
+    "White": "05",
+}
+
+ethinicity_map_dict  = {
+    "Hispanic or Latino": "Y",
+    "Not Hispanic or Latino": "N",
+}
+
+gender_map_dict = {
+    'MALE': 'M',
+    'FEMALE': 'F'
+}
+
+
+############################################## UNITS VALIDATION DICT ##############################################
 

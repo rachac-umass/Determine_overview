@@ -15,6 +15,8 @@ import requests
 import pickle
 import us
 
+from omop_config import *
+
 ### Helper functions ###
 
 def check_columns(df: pl.DataFrame, target_columns: list[str])-> bool:
@@ -227,3 +229,30 @@ def get_acs_data(census_object, zipstate_object, cds_fields, zipcode, year, miss
         return_dict = dict(zip(cds_fields,[missing_value]*len(cds_fields)))
     
     return return_dict
+
+
+############# demogrpahics function #############
+def func_map_race(value):
+
+    if value is None:
+        return "UNK"
+    elif value not in race_map_dict.keys():
+        return "UNK"
+    else:
+        return race_map_dict[value]
+    
+def func_map_sex(value):
+    if value is None:
+        return "UNK"
+    elif value not in gender_map_dict.keys():
+        return "UNK"
+    else:
+        return 
+    
+def func_map_ethinicity(value):
+    if value is None:
+        return "UNK"
+    elif value not in ethinicity_map_dict.keys():
+        return "UNK"
+    else:
+        return

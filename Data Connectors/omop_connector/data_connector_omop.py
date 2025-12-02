@@ -15,10 +15,9 @@ TO-DO:
 
 import omop_config
 from helper_functions import check_columns,  meds_rxcui_to_api, get_active_ingredient, normalize_active_ingridents
-from helper_functions import read_icd_mappings, get_initial_char_for_icd_codes
-from helper_functions import clean_prefix_data
+from helper_functions import read_icd_mappings
 from helper_functions import custom_height_aggregator,convert_wt_kg_to_lb
-
+from helper_functions import func_map_race, func_map_sex, func_map_ethinicity
 import argparse
 import polars as pl
 import numpy as np
@@ -26,75 +25,115 @@ import pyreadr
 
 
 ### Command line aruments ###
-parse = argparse.ArgumentParser(description = '''This script is for transforming raw omop data into dataset that can be used for model prediction
-                                
-                                Data requirements:
-                                    Folder that contains all required files:
-                                        1. patient info
-                                        2. medications
-                                        3. lab results
-                                        4. diagnoses
-                                        5. bmi and bp
-                                        6. community vital signs
-                                
-                                *** Make sure the filenames are modified to match the names present in the config file. ***
-                                *** Column names used for model prediction are in config file. ***
-                                *** Handles both csv and parquet files. Recommended: parquet ***
+parse = argparse.ArgumentParser(
+    description="""
+This script transforms raw OMOP data into a dataset suitable for model prediction.
 
-                                ''',
-                                epilog = 'Refer to Github repo Wiki for data requirements')
+Data Requirements:
+  - Folder containing all required files:
+      1. Patient info
+      2. Medications
+      3. Lab results
+      4. Diagnoses
+      5. BMI and BP
+      6. Community vital signs
 
-parse.add_arguments('--data_folder',
-                    type = str, 
-                    help = 'Path to the folder that contains all required input files.')
+*** Ensure filenames match those specified in the config file. ***
+*** Model prediction columns are defined in the config file. ***
+*** Handles both CSV and Parquet files (Parquet recommended). ***
+    """,
+    epilog='Refer to the GitHub repo Wiki for detailed data requirements.',
+    formatter_class=argparse.RawTextHelpFormatter
+)
 
-parse.add_arguments('--use_lab_results_aggregation', 
-                    action = argparse.BooleanOptionalAction, 
-                    default = True, 
-                    help = 'Argument that allows lab results aggregation(units filter and median agg). By default, it is True')
+parse.add_argument(
+    '--data_folder',
+    type=str,
+    required=True,
+    help='Path to the input folder containing all required OMOP files (e.g., "data/input/")'
+)
 
-parse.add_arguments('--medication_tranformation',
-                    type = str,
-                    choices = ['rxcui_api','api'], ### add atc later 
-                    help = '''Argument to to choose whether to transform the medications into type.
-                    Options:
-                    1. rxcui -> rxcui to active ingredient
-                    2. active ingredient -> no transformation
-                    3. ATC -> rxcui to ATC''')
+parse.add_argument(
+    '--use_lab_results_aggregation', 
+    action=argparse.BooleanOptionalAction, 
+    default=True,
+    help='Aggregate lab results by median after unit harmonization. Recommended: keep enabled. Default: %(default)s'
+)
 
+parse.add_argument(
+    '--medication_tranformation',
+    type=str,
+    choices=['rxcui_api', 'api'],
+    help=(
+        "Method for medication transformation:\n"
+        "  - 'rxcui_api': converts RxCUI to active ingredient (default).\n"
+        "  - 'api': treats RxCUI as active ingredient (no transformation).\n"
+        "  (ATC will be supported later.)"
+    )
+)
 
-parse.add_arguments('--file_format',
-                   type = str,
-                   default = 'parquet',
-                   choices = ['csv','parquet'],
-                   help = 'Argument to choose file format of input data format. Defualt value is parquet(pl)')
+parse.add_argument(
+    '--file_format',
+    type=str,
+    default='parquet',
+    choices=['csv', 'parquet'],
+    help='File format for input data. Choose between "csv" and "parquet". Default: %(default)s'
+)
 
-parse.add_arguments('--use_bmi_bp_aggregation',
-                   action = argparse.BooleanOptionalAction, 
-                    default = True, 
-                    help = 'Argument that allows bmi and bp aggregation(median agg). By default, it is True')
+parse.add_argument(
+    '--use_bmi_bp_aggregation',
+    action=argparse.BooleanOptionalAction,
+    default=True,
+    help='Aggregate BMI and blood pressure by median. Default: %(default)s'
+)
 
+parse.add_argument(
+    '--output_before_joining',
+    action=argparse.BooleanOptionalAction,
+    default=True,
+    help=(
+        "If enabled, saves individual transformed datasets to disk "
+        "before merging them for modeling or prediction. Default: %(default)s"
+    )
+)
 
-parse.add_arguments('--output_before_joining',
-                   action = argparse.BooleanOptionalAction, 
-                    default = True, 
-                    help = 'Argument that allows to write transformed datasets before joining to local')
+parse.add_argument(
+    '--missing_numerical_value_negative_10',
+    action=argparse.BooleanOptionalAction,
+    default=True,
+    help=(
+        "If enabled, sets missing values for numerical columns to -10. "
+        "Recommended: keep enabled. Default: %(default)s"
+    )
+)
 
-parse.add_arguments('--output_file_format',
-                   type = str,
-                   default = 'parquet',
-                    choices = ['parquet','cvs'], 
-                    help = 'Argument that allows to change output file format(csv or parquet)')
+parse.add_argument(
+    '--output_file_format',
+    type=str,
+    default='parquet',
+    choices=['parquet', 'csv'],
+    help='Output file format for the processed dataset. Choose "csv" or "parquet". Default: %(default)s'
+)
 
-parse.add_arguments('--mode',
-                   type = str,
-                   default = 'predict',
-                    choices = ['predict','model'], 
-                    help = 'Argument that allows to create dataset for modeling or prediction')
+parse.add_argument(
+    '--mode',
+    type=str,
+    default='predict',
+    choices=['predict', 'model'],
+    help='Choose the operation mode: "model" (for training), "predict" (for inference). Default: %(default)s'
+)
 
-
-parse.add_arguments('-v','--verbose',action = argparse.BooleanOptionalAction, default = False,
-                    help = 'Enable verbose mode (optional)')
+parse.add_argument(
+    '--feature_set',
+    type=str,
+    default='Boruta',
+    choices=['Boruta', 'All'],
+    help=(
+        'Features to include in the final processed dataset:\n'
+        '  - "Boruta": Only features selected by the Boruta algorithm.\n'
+        '  - "All": All available features (no selection). Default: %(default)s'
+    )
+)
 
 args = parse.parse_args()
 
@@ -195,7 +234,7 @@ if __name__ == '__main__':
 
     ############## Transform diagnoses codes to PheWas codes/ATC codes ##############
     diag_df = diag_df.with_columns((pl.col("vocabulary_id")+':'+pl.col('condition_source_value')).alias('ICD_code'))
-    diag_df = diag_df.with_columns(pl.col("ICD_code").map_elements(get_initial_char_for_icd_codes, return_dtype = pl.Utf8).alias("phecode_map"))
+    diag_df = diag_df.with_columns(pl.col("ICD_code").map_elements(get_phecode_from_concept_cd, return_dtype = pl.Utf8).alias("phecode_map"))
 
     ############## Transform lab results: Filter required lab results and unit standardization and aggregation (median) ##############
 
@@ -245,6 +284,9 @@ if __name__ == '__main__':
         (pl.col("median_weight") / (pl.col("mode_height") ** 2) * 703).alias("BMI")
     )
 
+    bmi_ht_wt_df = bmi_ht_wt_df.filter((pl.col('BMI') > omop_config.bmi_range[0]) &
+                             (pl.col('BMI') < omop_config.bmi_range[1]))
+
     # ** Diastolic and systolic BP **
     dia_bp_df = lab_df.filter(pl.col('LabLOINC').is_in(omop_config.diastolic_loinc_codes))
     sys_bp_df = lab_df.filter(pl.col('LabLOINC').is_in(omop_config.systolic_loinc_codes))
@@ -254,10 +296,10 @@ if __name__ == '__main__':
 
     #### Add units validation for dia and sys bp
 
-    dia_bp_df  = dia_bp_df.filter((pl.col('Result_Number') > 40) &
-                             (pl.col('Result_Number') < 160))
-    sys_bp_df  = sys_bp_df.filter((pl.col('Result_Number') > 60) &
-                                (pl.col('Result_Number') < 190))
+    dia_bp_df  = dia_bp_df.filter((pl.col('Result_Number') > omop_config.diastolic_range[0]) &
+                             (pl.col('Result_Number') < omop_config.diastolic_range[1]))
+    sys_bp_df  = sys_bp_df.filter((pl.col('Result_Number') > omop_config.systolic_range[0]) &
+                                (pl.col('Result_Number') < omop_config.systolic_range[1]))
     
     average_dia_bp_per_patient = dia_bp_df.group_by("patient_id").agg([
         pl.col("Result_Number").mean().alias("median_diastolic_value"),
@@ -275,34 +317,15 @@ if __name__ == '__main__':
                                                         if 45<=x<=54 else '55-64' if 55<=x<=64 else \
                                                         '65-74' if  65<=x<=74 else '75_older').alias('Age_group'))
     
-    cohort_df = cohort_df.with_columns( pl.col('Sex_CD').map_elements(clean_prefix_data, return_dtype = pl.Utf8).alias('Sex_CD'),
-                                               pl.col('Race_CD').map_elements(clean_prefix_data, return_dtype = pl.Utf8).alias('Race_CD'),
-                                               pl.col('Hispanic_CD').map_elements(clean_prefix_data, return_dtype = pl.Utf8).alias('Hispanic_CD'),
-                                               pl.col('Gender_CD').map_elements(clean_prefix_data, return_dtype = pl.Utf8).alias('Gender_CD')
-                                  )
+
+
     
-    ## Race  ##
-    cohort_df = cohort_df.with_columns(pl.col('Race_CD'))
+    cohort_df = cohort_df.with_columns( pl.col('Sex_CD').map_elements(func_map_sex, return_dtype = pl.Utf8).alias('Sex_CD'),
+                                               pl.col('Race_CD').map_elements(func_map_race, return_dtype = pl.Utf8).alias('Race_CD'),
+                                               pl.col('Hispanic_CD').map_elements(func_map_ethinicity, return_dtype = pl.Utf8).alias('Hispanic_CD'),
+                                            #    pl.col('Gender_CD').map_elements(clean_prefix_data, return_dtype = pl.Utf8).alias('Gender_CD')
+                                  )
 
-    # Values to be replaced
-    values_to_replace = ["06", "07"]
-    replacement_value = "UN"
-
-    #*************** change code for handling demographics **************
-    cohort_df = cohort_df.with_columns([
-    pl.col('Sex_CD').str.replace(r'^(NI|OT|UN)$', 'UNK', literal=False).alias('Sex_CD'),
-    pl.col('Race_CD').str.replace(r'^(NI|OT|UN)$', 'UNK', literal=False).alias('Race_CD'),
-    pl.col('Hispanic_CD').str.replace(r'^(R|NI|UN)$', 'UNK', literal=False).alias('Hispanic_CD'),
-    pl.col('Gender_CD').str.replace(r'^(OT|NI|UN)$', 'UNK', literal=False).alias('Gender_CD')
-    ])
-
-    # Replace multiple values with a single value
-    cohort_df = cohort_df.with_columns(
-        pl.when(pl.col("Race_CD").is_in(values_to_replace))
-        .then(pl.lit(replacement_value))
-        .otherwise(pl.col("Race_CD"))
-        .alias("Race_CD")
-    )
 
     age_group_dict = {'18-34': 0,
                   '35-44': 1,
@@ -348,30 +371,36 @@ if __name__ == '__main__':
     temp_df = temp_df.fill_null(0)
 
     temp_df = temp_df.join(lab_results_pivot_df, on = 'patient_id', how = 'left')
-    temp_df = temp_df.fill_null(-100)
-
-    
+    if args.missing_numerical_value_negative_10:
+        temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
 
     temp_df = temp_df.join(bmi_ht_wt_df, on = 'patient_id', how = 'left')
-    temp_df = temp_df.fill_null(-100)
+    if args.missing_numerical_value_negative_10:
+        temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
     temp_df = temp_df.join(dia_bp_df, on = 'patient_id', how = 'left')
-    temp_df = temp_df.fill_null(-100)
+    if args.missing_numerical_value_negative_10:
+        temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
     temp_df = temp_df.join(sys_bp_df, on = 'patient_id', how = 'left')
-    temp_df = temp_df.fill_null(-100)
+    if args.missing_numerical_value_negative_10:
+        temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
 
     temp_df = temp_df.join(cvs_df, on = 'patient_id',how ='left')
-    temp_df = temp_df.fill_null(-100)
+    if args.missing_numerical_value_negative_10:
+        temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
 
     # Define the columns to one-hot encode
-    columns_to_one_hot_encode = ['Sex_CD', 'Race_CD', 'Hispanic_CD', 'Gender_CD']
+    columns_to_one_hot_encode = ['Sex_CD', 'Race_CD', 'Hispanic_CD']#, 'Gender_CD']
 
-    # Combine the non-encoded columns with the encoded ones
-    columns_to_one_hot_encode = ['Sex_CD', 'Race_CD', 'Hispanic_CD', 'Gender_CD']
 
     df_final_modeing_dataset = temp_df.to_dummies(columns=columns_to_one_hot_encode)
 
-    df_final_modeing_dataset = df_final_modeing_dataset.drop('Sex_CD_UNK','Race_CD_UNK','Hispanic_CD_UNK','Gender_CD_UNK')
+    df_final_modeing_dataset = df_final_modeing_dataset.drop('Sex_CD_UNK','Race_CD_UNK','Hispanic_CD_UNK')#,'Gender_CD_UNK')
 
     ########################## Filtering only features required for modeling ###########################
-    df_final_modeing_dataset = df_final_modeing_dataset.filter(pl.col(omop_config.target_features))
+    if args.mode == 'predict':
+        if args.feature_set == 'Boruta':
+            df_final_modeing_dataset = df_final_modeing_dataset.filter(pl.col(omop_config.target_features))
+    elif args.mode == 'evaluate':
+        if args.feature_set == 'Boruta':
+            df_final_modeing_dataset = df_final_modeing_dataset.filter(pl.col(omop_config.target_features + omop_config.target_label))
 
