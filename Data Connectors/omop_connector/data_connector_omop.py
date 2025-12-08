@@ -8,20 +8,23 @@ TO-DO:
 1. Add data validator function in helper functions (units validator for sys and dia bp)
 2. Verbose functionality
 3. Skip feature engineering
-4. Move varibles to omop config (there are lots of variables to move)
+
 5. Scaling features according to model type to be used
-6. Demograpics change in omop compared to i2b2
 """
 
 import omop_config
 from helper_functions import check_columns,  meds_rxcui_to_api, get_active_ingredient, normalize_active_ingridents
-from helper_functions import read_icd_mappings
+from helper_functions import read_icd_mappings, get_phecode_from_concept_cd
 from helper_functions import custom_height_aggregator,convert_wt_kg_to_lb
 from helper_functions import func_map_race, func_map_sex, func_map_ethinicity
+from helper_functions import clean_zipcode, get_acs_data
+
 import argparse
 import polars as pl
 import numpy as np
 import pyreadr
+from pyzipcode import ZipCodeDatabase
+from census import Census
 
 
 ### Command line aruments ###
@@ -108,6 +111,27 @@ parse.add_argument(
 )
 
 parse.add_argument(
+    '--retrieve_sdoh_cvs',
+    action=argparse.BooleanOptionalAction,
+    default=True,
+    help=(
+        "If enabled, collects SDoH zipcode-level from ACS."
+        "Use this if cvs_data file is not available. Default: %(default)s"
+    )
+)
+
+parse.add_argument(
+    '--apply_unit_standardizer_lab_results',
+    action=argparse.BooleanOptionalAction,
+    default=False,
+    help=(
+        "If enabled, does unit standardization by removing invalid units."
+        "Default: %(default)s, meaning script uses lab results from boruta features and it's corresponding units."
+    )
+)
+
+
+parse.add_argument(
     '--output_file_format',
     type=str,
     default='parquet',
@@ -177,13 +201,15 @@ if __name__ == '__main__':
         lab_df = pl.scan_parquet(script_config.labresults_file)
         diag_df = pl.scan_parquet(script_config.diag_file)
         meds_df = pl.scan_parquet(script_config.med_file)
-        cvs_df = pl.scan_parquet(script_config.cvs_file)
+        if parse.retrieve_sdoh_cvs:
+            cvs_df = pl.scan_parquet(script_config.cvs_file)
     else:
         cohort_df = pl.scan_csv(script_config.patient_file)
         lab_df = pl.scan_csv(script_config.labresults_file)
         diag_df = pl.scan_csv(script_config.diag_file)
         meds_df = pl.scan_csv(script_config.med_file)
-        cvs_df = pl.scan_csv(script_config.cvs_file)
+        if parse.retrieve_sdoh_cvs:
+            cvs_df = pl.scan_csv(script_config.cvs_file)
 
 
     if script_config.verbose:
@@ -196,8 +222,6 @@ if __name__ == '__main__':
                 "icd9_to_10_mapping_dict" : read_icd_mappings(omop_config.icd9_to_icd10_mapping) 
     }
 
-    # Required lab results for modeling
-    lab_loinc_and_unit_tuple = []
 
     if script_config.verbose:
         print("Column validation across all files(cohort, lab results, diagnoses, medications and cvs)")
@@ -207,7 +231,8 @@ if __name__ == '__main__':
     check_columns(diag_df, omop_config.diag_columns)
     check_columns(meds_df, omop_config.medication_columns)
     # check_columns(bmi_bp_df, omop_config.bmi_bp_columns) #### Not required for omop as bmi and bp are extracted from lab results
-    check_columns(cvs_df, omop_config.cvs_columns)
+    if parse.retrieve_sdoh_cvs:
+        check_columns(cvs_df, omop_config.cvs_columns)
 
     ##### Required columns from each dataset for modeling ####
     target_medication_columns = omop_config.target_medication_columns
@@ -245,11 +270,23 @@ if __name__ == '__main__':
     lab_df = lab_df.rename({"measurement_source_value": "LabLOINC", "unit_source_value": "Units","value_source_value":'Result_Number'})
 
     # Convert tuple to list of dictionaries
-    dict_loinc_unit = [dict(zip(keys, item)) for item in lab_loinc_and_unit_tuple]
+    dict_loinc_unit = [dict(zip(keys, item)) for item in omop_config.lab_loinc_and_unit_tuple]
 
+    #### Filtering boruta features ####
+    # lab_final_df = lab_df.filter(
+    #     pl.struct(["LabLOINC", "Units"]).is_in(dict_loinc_unit)
+    # )
+
+    combo_df = pl.DataFrame(tuple(omop_config.units_validation_tuple_boruta.items), schema=['LabLOINC', 'Result_Unit'])
+    
+    # Create a struct column in combo_df for unique combinations
+    combo_structs = combo_df.select(pl.struct(["LabLOINC", "Result_Unit"]).alias("combo_struct"))["combo_struct"]
+
+    # Now filter lab_results_df to exclude rows with LabLOINC/Result_Unit combos in combo_df
     lab_final_df = lab_df.filter(
-        pl.struct(["LabLOINC", "Units"]).is_in(dict_loinc_unit)
+        pl.struct(["LabLOINC", "Result_Unit"]).is_in(combo_structs)
     )
+
     lab_final_df = lab_final_df.group_by(['patient_id','LabLOINC']).agg(pl.col('Result_Number').median().alias('Result_Number'))
 
 
@@ -257,7 +294,7 @@ if __name__ == '__main__':
 
     # *** BMI *** 
     wt_df = lab_df.filter(pl.col('LabLOINC').is_in(omop_config.weight_loincs))
-    assert wt_df.select('Units').collect().is_in(['kg','lb']).all(), "weight df units column contains values in other than 'kg' or 'lb'"
+    assert wt_df.select('Units').collect().is_in(omop_config.weight_loinc_unit).all(), "weight df units column contains values in other than 'kg' or 'lb'"
     wt_df =wt_df.with_columns(
         pl.when(pl.col('Units')=='kg').then(pl.col('Result_Number').map_elements(convert_wt_kg_to_lb).otherwise(pl.col('Result_Number'))).alias('Result_Number')
     )
@@ -270,7 +307,7 @@ if __name__ == '__main__':
     height_df = lab_df.filter(pl.col('LabLOINC').is_in(omop_config.height_loincs))
     
     # Asserting units be in inches
-    assert height_df.select('Units').collect().is_in(['in','inches']).all(), "height df units column contains values other than 'inches' or 'in'"
+    assert height_df.select('Units').collect().is_in(omop_config.height_loinc_unit).all(), "height df units column contains values other than 'inches' or 'in'"
     
     mode_height_df = height_df.group_by("patient_id").agg([
     pl.col("Result_Number").map_elements(custom_height_aggregator, return_dtype = pl.Float32).alias("mode_height")
@@ -295,6 +332,9 @@ if __name__ == '__main__':
 
 
     #### Add units validation for dia and sys bp
+    assert dia_bp_df.select('Units').collect().is_in(omop_config.dia_sys_stolic_unit).all(), "diastolic df units column contains values other than 'mm Hg', 'mmHg' or 'mm[Hg]'"
+    assert sys_bp_df.select('Units').collect().is_in(omop_config.dia_sys_stolic_unit).all(), "systolic df units column contains values other than 'mm Hg', 'mmHg' or 'mm[Hg]'"
+
 
     dia_bp_df  = dia_bp_df.filter((pl.col('Result_Number') > omop_config.diastolic_range[0]) &
                              (pl.col('Result_Number') < omop_config.diastolic_range[1]))
@@ -337,6 +377,37 @@ if __name__ == '__main__':
     cohort_df = cohort_df.with_columns(pl.col('Age_group').replace_strict(age_group_dict).alias('Age_group'))
 
 
+    ############## Creating SDoH CVS ##############
+    if parse.retrieve_sdoh_cvs:
+
+        zcdb = ZipCodeDatabase()
+        census = Census(omop_config.census_key)
+
+        pat_zipcodes_data = cohort_df.select('zipcode').collect()['zipcode'].to_list()
+        pat_zipcodes_data_clean = [clean_zipcode(zip) for zip in pat_zipcodes_data]
+        pat_zipcodes_data_clean_uni = np.unique(pat_zipcodes_data_clean)
+        acs_data_zips = {}
+                    
+        for pat_zip in pat_zipcodes_data_clean_uni:
+
+            acs_data_zips[pat_zip] = get_acs_data(census, zcdb, 
+                                          omop_config.cvs_fields,
+                                          pat_zip, 
+                                          2017)## Add code to dynamically add zipcode
+            
+        pat_acs_data = []
+        for zip in pat_zipcodes_data_clean:
+            pat_acs_data.append(acs_data_zips[zip])
+
+        cvs_df = pl.from_dict(pat_acs_data)
+
+        cvs_df = cvs_df.rename({'B19083_001E': 'ACS_GINI',
+                                  'B19013_001E': 'ACS MedHHIncome',
+                                   'ACS_poverty':'ACS pctPoverty100',
+                                    'ACS_unemployment': 'ACS_Unemployment',
+                                    'pctCollGrad': 'ACS_pctCollGrad'})
+        
+
     ####### Pivoting and joining the datasets #######
     meds_df = meds_df.with_columns(pl.lit(1).alias('usage'))
     medications_pivot_df = meds_df.pivot(on = 'Active_ingrident', index = 'patient_id', values = 'usage', aggregate_function = 'max')
@@ -346,11 +417,16 @@ if __name__ == '__main__':
     diag_df = diag_df.with_columns(pl.lit(1).alias('Usage'))
     diagnoses_pivot_df = diag_df.pivot(on = 'phecode_map', index = 'patient_id', values = 'Usage', aggregate_function = 'max')
 
-    community_vital_pivot_df = cvs_df.pivot(on = 'Indicator', 
-                                                    index ='patient_id', 
-                                                    values ='FACT', 
-                                                    aggregate_function = 'mean')
-    community_vital_pivot_df = community_vital_pivot_df.fill_null(-100)
+    community_vital_pivot_df = cvs_df#.pivot(on = 'Indicator', 
+                                                    # index ='patient_id', 
+                                                    # values ='FACT', 
+                                                    # aggregate_function = 'first')
+    
+    #######
+    
+    if args.missing_numerical_value_negative_10:
+        community_vital_pivot_df = community_vital_pivot_df.fill_null(omop_config.missing_numerical_replace_val)
+    # community_vital_pivot_df = community_vital_pivot_df.fill_null(-100)
 
 
     ###### Removing patients with active ingredient of diabetes from required patient ids #####
@@ -390,7 +466,6 @@ if __name__ == '__main__':
 
     # Define the columns to one-hot encode
     columns_to_one_hot_encode = ['Sex_CD', 'Race_CD', 'Hispanic_CD']#, 'Gender_CD']
-
 
     df_final_modeing_dataset = temp_df.to_dummies(columns=columns_to_one_hot_encode)
 

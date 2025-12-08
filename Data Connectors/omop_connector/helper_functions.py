@@ -41,7 +41,7 @@ def get_active_ingredient(rxcui):
            # Make the GET request to the API
            response = requests.get(request_url)
            response.raise_for_status()  # Raise an error if the request was unsuccessful
-           print(response)
+        #    print(response)
            # Parse the JSON response
            data = response.json()
 
@@ -189,19 +189,21 @@ def custom_height_aggregator(ht_list):
         return None
     return max(set(ht_list), key=ht_list.count)
 
+def clean_zipcode(zipcode: str):
+    if '-' in zipcode:
+        return zipcode.split('-')[0]
+    else:
+        return zipcode
 
 
 ### SDoH extractor ###
 def get_acs_data(census_object, zipstate_object, cds_fields, zipcode, year, missing_value = None):
 
-    invalid_zipcodes = []
-    #Handling zipcode with "-". Example: 01610-3301
-    if '-' in zipcode:
-        zipcode = zipcode.split('-')[0]
+
           
     try:
         state_fip = us.states.mapping('abbr', 'fips')[zipstate_object[zipcode].state]
-    
+
         acs_data = census_object.acs5.state_zipcode(
         fields=cds_fields, 
         state_fips=state_fip,
@@ -221,17 +223,21 @@ def get_acs_data(census_object, zipstate_object, cds_fields, zipcode, year, miss
         try:
             acs_data[0]['pctCollGrad'] = np.round(((acs_data[0]['B15003_022E'] + acs_data[0]['B15003_023E'] + acs_data[0]['B15003_024E'] + acs_data[0]['B15003_025E'])/acs_data[0]['B01003_001E'])*100,2)
         except:
-            acs_data[0]['ACS_unemployment'] = missing_value
+            acs_data[0]['pctCollGrad'] = missing_value
 
         return_dict = acs_data[0]
     except:
         # Handle invalid zipcodes
         return_dict = dict(zip(cds_fields,[missing_value]*len(cds_fields)))
+        return_dict['ACS_poverty'] = missing_value
+        return_dict['ACS_unemployment'] = missing_value
+        return_dict['pctCollGrad'] = missing_value
+
     
     return return_dict
 
 
-############# demogrpahics function #############
+############# demographic functions #############
 def func_map_race(value):
 
     if value is None:
@@ -244,10 +250,10 @@ def func_map_race(value):
 def func_map_sex(value):
     if value is None:
         return "UNK"
-    elif value not in gender_map_dict.keys():
+    elif value not in gender_map:
         return "UNK"
     else:
-        return 
+        return value
     
 def func_map_ethinicity(value):
     if value is None:

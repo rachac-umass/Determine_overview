@@ -1,0 +1,68 @@
+name: "Data connector OMOP tester"
+run-name: 'Deploy by @${{ github.actor }} on ${{ github.ref_name }}'
+
+on:
+  push:
+    path:
+      'Data Connectors/omop/**'
+    jobs:
+      build: 
+        runs-on: [ubuntu-latest]
+        strategy:
+          matrix:
+            python-version:  ['pypy3.10', "3.10", "3.11", "3.12"]
+          steps:
+
+            
+            run: 'echo "This job is triggered by event ${{github.event_name}}"'
+            run: 'echo "This job is currently running on ${{runner.os}}"'
+
+            -name: Print working directory
+            run: pwd
+
+            -name: checkout code
+            uses: actions/checkout@v2
+
+            -name: Validating file names
+            run: |
+            echo "Validating file names..."
+            folder_path = "./Data Connectors/omop/**
+
+            filenames = (data_connector_omop.py helper_functions.py  omop_config.py) # filenames to validate
+
+            actual_files = $(ls "$folder_path")
+            echo 
+
+            diff <(echo "$actual_files" | sort) <(printf "%s\n" "${expected_files[@]}" | sort) ## validating file names
+            if [ $? -eq 0 ]; then
+              echo "File names match."
+            else
+              echo "File names do not match."
+              exit 1
+            fi
+        
+            -name: Install dependencies
+            run: |
+            python -m pip install -r ./Data Connectors/requirements_dataconnector.txt
+            pipx install ruff -q
+            
+            # Reporting the inconsistencies using ruff (no commits)
+            - name: Lint code with Ruff
+            run: ruff check --output-format=github --target-version=py39 # adapt this to matrix later
+            - name: Check code formatting with Ruff
+            run: ruff format --diff --target-version=py39
+            continue-on-error: true
+
+
+            -name: Run pytest tests on helper helper_functions
+            
+
+
+
+
+
+
+
+
+            
+

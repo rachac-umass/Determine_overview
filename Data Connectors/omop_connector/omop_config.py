@@ -25,8 +25,8 @@ cvs_fields = ["B19083_001E", # GINI INDEX OF INCOME INEQUALITY
             "B19013_001E", # Medican household income
             "C17002_002E", # poverty <50
             "C17002_003E", # poverty 50<x<99
-            "B17001_002E", # Total population 
-            "B15002_001E", # SEX BY EDUCATIONAL ATTAINMENT FOR THE POPULATION 25 YEARS AND OVER 
+            "B17001_002E", # Total population
+            "B15002_001E", # SEX BY EDUCATIONAL ATTAINMENT FOR THE POPULATION 25 YEARS AND OVER
              "B01003_001E",
           "B23025_001E", # EMPLOYMENT STATUS FOR THE POPULATION 16 YEARS AND OVER (TOTAL)
           "B23025_005E", #EMPLOYMENT STATUS FOR THE POPULATION 16 YEARS AND OVER (UNEMPLOYED)
@@ -50,7 +50,9 @@ icd9_to_icd10_mapping = './icd_code_to_phecode/icd9to10dictionary.txt'
 #  Columns names required in each dataset
 cohort_columns = ['person_id',
                   'age_at_index'
-                   'Outcome'] ### Need Gender, Race and Hispanic columns
+                   'Outcome',
+                #    'Encounter',
+                   'zipcode'] ### Need Gender, Race and Hispanic columns
 
 lab_results_columns = ['person_id',
                        'measurement_source_value', # LOINC code
@@ -58,15 +60,20 @@ lab_results_columns = ['person_id',
                        'unit_source_value'] # Unit of measurement
 
 diag_columns= ['person_id',
-               'vocabulary_id' ## ICD9 or ICD10
+               'vocabulary_id', ## ICD9 or ICD10
                'condition_source_value'] ## ICD code or concept_code
 
 medication_columns = ['person_id',
-                      'concept_code' ## rxnorm code from table concept
+                      'concept_code', ## rxnorm code from table concept
                       'concept_name', ## Active ingrident
                       ]
 
-cvs_columns = ['person_id'] #needs extraction from aqhs
+cvs_columns = ['person_id',
+               'ACS_GINI',
+                'ACS MedHHIncome',
+                'ACS pctPoverty100',
+                'ACS_Unemployment',
+                'ACS_pctCollGrad'] #needs extraction from aqhs
 
 # Column names required for final model or modeling dataset
 target_features = ['Age_group', 'azithromycin', 'levothyroxine', 'acyclovir',
@@ -106,7 +113,7 @@ weight_loincs = [
     "8351-9"
 ]
 
-weight_loinc_unit = 'lb'
+weight_loinc_unit = ['kg','lb']
 
 height_loincs = [
     "3137-7",
@@ -116,7 +123,7 @@ height_loincs = [
     "8308-9"
 ]
 
-height_loinc_unit = 'in'
+height_loinc_unit = ['in']
 
 systolic_loinc_codes = [
     "75997-7",
@@ -134,6 +141,8 @@ diastolic_loinc_codes = [
     "8462-4",
     "8496-2"
 ]
+
+dia_sys_stolic_unit = ['mm Hg','mm[Hg]', 'mmHg']
 
 diastolic_range = [40,160]
 systolic_range = [60,190]
@@ -156,11 +165,30 @@ ethinicity_map_dict  = {
     "Not Hispanic or Latino": "N",
 }
 
-gender_map_dict = {
-    'MALE': 'M',
-    'FEMALE': 'F'
-}
+gender_map = ['F','M']
 
-
+acs_Cvs_fields = fields = ["B19083_001E", # GINI INDEX OF INCOME INEQUALITY
+            "B19013_001E", # Medican household income
+            "C17002_002E", # poverty <50
+            "C17002_003E", # poverty 50<x<99
+            "B17001_002E", # Total population 
+            "B15002_001E", # SEX BY EDUCATIONAL ATTAINMENT FOR THE POPULATION 25 YEARS AND OVER 
+             "B01003_001E",
+          "B23025_001E", # EMPLOYMENT STATUS FOR THE POPULATION 16 YEARS AND OVER (TOTAL)
+          "B23025_005E", #EMPLOYMENT STATUS FOR THE POPULATION 16 YEARS AND OVER (UNEMPLOYED)
+          "B15003_022E",
+          "B15003_023E",
+          "B15003_024E",
+          "B15003_025E"
+         ]
+census_key = '' #### KEY GOES HERE
 ############################################## UNITS VALIDATION DICT ##############################################
 
+units_validation_tuple_boruta = {
+    "LOINC:2085-9": "mg/dL", #[100 -1000]
+    "LOINC:2345-7": "mg/dL",
+    "LOINC:74774-1": "mg/dL",
+    "LOINC:27353-2": "mg/dL",
+    "LOINC:9318-7": "ug/mg{creat}",
+    "LOINC:62238-1": "mL/min/{1.73_m2}"
+}
