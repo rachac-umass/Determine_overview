@@ -176,10 +176,10 @@ def get_phecode_from_concept_cd(cd, phewas_mapping_dicts):
         return cd
     
 
-def convert_wt_kg_to_lb(kg):
+def convert_wt_kg_to_lb(kg: float)-> float:
     return kg * 2.20462
 
-def clean_prefix_data(value):
+def clean_prefix_data(value: str)-> str:
     return value.split(':')[-1]
 
 
@@ -189,17 +189,29 @@ def custom_height_aggregator(ht_list):
         return None
     return max(set(ht_list), key=ht_list.count)
 
-def clean_zipcode(zipcode: str):
+def clean_zipcode(zipcode: str)-> str:
     if '-' in zipcode:
-        return zipcode.split('-')[0]
-    else:
-        return zipcode
+        zipcode = zipcode.split('-')[0]
+
+        if len(zipcode)==4:
+            return '0'+zipcode
+        elif len(zipcode) ==5:
+            return zipcode
+        else:
+            return None 
+ 
 
 
 ### SDoH extractor ###
 def get_acs_data(census_object, zipstate_object, cds_fields, zipcode, year, missing_value = None):
 
+    if zipcode is None:
+        return_dict = dict(zip(cds_fields,[missing_value]*len(cds_fields)))
+        return_dict['ACS_poverty'] = missing_value
+        return_dict['ACS_unemployment'] = missing_value
+        return_dict['pctCollGrad'] = missing_value
 
+        return return_dict 
           
     try:
         state_fip = us.states.mapping('abbr', 'fips')[zipstate_object[zipcode].state]
@@ -238,7 +250,7 @@ def get_acs_data(census_object, zipstate_object, cds_fields, zipcode, year, miss
 
 
 ############# demographic functions #############
-def func_map_race(value):
+def func_map_race(value: str):
 
     if value is None:
         return "UNK"
@@ -247,7 +259,7 @@ def func_map_race(value):
     else:
         return race_map_dict[value]
     
-def func_map_sex(value):
+def func_map_sex(value: str):
     if value is None:
         return "UNK"
     elif value not in gender_map:
@@ -255,7 +267,7 @@ def func_map_sex(value):
     else:
         return value
     
-def func_map_ethinicity(value):
+def func_map_ethinicity(value: str):
     if value is None:
         return "UNK"
     elif value not in ethinicity_map_dict.keys():

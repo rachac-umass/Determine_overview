@@ -43,7 +43,7 @@ on:
         
             -name: Install dependencies
             run: |
-            python -m pip install -r ./Data Connectors/requirements_dataconnector.txt
+            python -m pip install -r ./Data Connectors/omop_connector/requirements.txt
             pipx install ruff -q
             
             # Reporting the inconsistencies using ruff (no commits)
@@ -55,6 +55,9 @@ on:
 
 
             -name: Run pytest tests on helper helper_functions
+
+
+            
             
 
 

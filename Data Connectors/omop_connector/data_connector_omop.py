@@ -402,8 +402,8 @@ if __name__ == '__main__':
         cvs_df = pl.from_dict(pat_acs_data)
 
         cvs_df = cvs_df.rename({'B19083_001E': 'ACS_GINI',
-                                  'B19013_001E': 'ACS MedHHIncome',
-                                   'ACS_poverty':'ACS pctPoverty100',
+                                  'B19013_001E': 'ACS_MedHHIncome',
+                                   'ACS_poverty':'ACS_pctPoverty100',
                                     'ACS_unemployment': 'ACS_Unemployment',
                                     'pctCollGrad': 'ACS_pctCollGrad'})
         
