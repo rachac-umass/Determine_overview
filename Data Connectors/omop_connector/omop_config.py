@@ -5,8 +5,6 @@ Description: Python config file required for running "data_connector_omop.py".
 Version: 1.0
 
 TO-DO:
-1. Add lab results and respective units for required features
-2. Add units for weight, height for unit validation
 """
 
 # Folder and file names

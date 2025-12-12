@@ -1,0 +1,12 @@
+# Project dependencies
+# This section lists the core libraries needed for the application to run
+python==3.10.19
+
+polars==1.36.1
+numpy==1.26.4
+requests==2.32.5
+pyreadr==0.5.4
+pyzipcode==3.0.1
+census==0.8.24
+us==3.2.0
+argparse==1.4.0
