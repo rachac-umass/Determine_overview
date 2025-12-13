@@ -76,7 +76,7 @@ parse.add_argument(
 )
 
 parse.add_argument(
-    '--file_format',
+    '--input_file_format',
     type=str,
     default='parquet',
     choices=['csv', 'parquet'],
@@ -93,7 +93,7 @@ parse.add_argument(
 parse.add_argument(
     '--output_before_joining',
     action=argparse.BooleanOptionalAction,
-    default=True,
+    default=False,
     help=(
         "If enabled, saves individual transformed datasets to disk "
         "before merging them for modeling or prediction. Default: %(default)s"
@@ -208,7 +208,7 @@ if __name__ == '__main__':
         lab_df = pl.scan_csv(script_config.labresults_file)
         diag_df = pl.scan_csv(script_config.diag_file)
         meds_df = pl.scan_csv(script_config.med_file)
-        if parse.retrieve_sdoh_cvs:
+        if not parse.retrieve_sdoh_cvs:
             cvs_df = pl.scan_csv(script_config.cvs_file)
 
 
@@ -231,7 +231,7 @@ if __name__ == '__main__':
     check_columns(diag_df, omop_config.diag_columns)
     check_columns(meds_df, omop_config.medication_columns)
     # check_columns(bmi_bp_df, omop_config.bmi_bp_columns) #### Not required for omop as bmi and bp are extracted from lab results
-    if parse.retrieve_sdoh_cvs:
+    if not parse.retrieve_sdoh_cvs:
         check_columns(cvs_df, omop_config.cvs_columns)
 
     ##### Required columns from each dataset for modeling ####
@@ -239,7 +239,8 @@ if __name__ == '__main__':
     target_lab_results_columns = omop_config.target_lab_results_columns
     target_diag_columns = omop_config.target_diag_columns
     target_bmi_bp_columns = omop_config.target_bmi_bp_columns
-    target_cvs_columns = omop_config.target_cvs_columns
+    if not parse.retrieve_sdoh_cvs:
+        target_cvs_columns = omop_config.target_cvs_columns
 
     ############################### Data transformation for required columns ############################### 
 
