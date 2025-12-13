@@ -64,7 +64,7 @@ parse.add_argument(
 )
 
 parse.add_argument(
-    '--medication_tranformation',
+    '--medication_transformation',
     type=str,
     choices=['rxcui_api', 'api'],
     help=(
@@ -159,6 +159,16 @@ parse.add_argument(
     )
 )
 
+parse.add_argument(
+    '--verbose',
+    action=argparse.BooleanOptionalAction,
+    default=False,
+    help=(
+        "If enabled, outputs progress in the command line at each step of the script. "
+        "Default: %(default)s."
+    )
+)
+
 args = parse.parse_args()
 
 class script_config:
@@ -175,7 +185,7 @@ class script_config:
     use_lab_results_aggregation = False
 
     # verbose
-    verbose = args.ver
+    verbose = args.verbose
 
     # data format of input files
     file_format = args.file_format
