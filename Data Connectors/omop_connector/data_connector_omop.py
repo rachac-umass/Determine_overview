@@ -188,7 +188,7 @@ class script_config:
     verbose = args.verbose
 
     # data format of input files
-    file_format = args.file_format
+    file_format = args.input_file_format
 
     # column name checks #
     patient_file_columns = omop_config.patient_columns
