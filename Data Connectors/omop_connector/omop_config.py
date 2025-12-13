@@ -10,12 +10,12 @@ TO-DO:
 # Folder and file names
 data_folder = 'omop_data_files'
 
-patient_file = 'omop_patient_details.parquet'
-labresults_file = 'omop_labresults.parquet'
-diag_file = 'omop_diagnoses.parquet'
-med_file = 'omop_medications.parquet'
-bmi_and_bp_file = 'omop_bmi_and_bp.parquet'
-cvs_file = 'omop_cvs.parquet'
+patient_file = 'omop_patient_details'
+labresults_file = 'omop_labresults'
+diag_file = 'omop_diagnoses'
+med_file = 'omop_medications'
+bmi_and_bp_file = 'omop_bmi_and_bp'
+cvs_file = 'omop_cvs'
 
 # secret key and fields for census data
 census_key = ''

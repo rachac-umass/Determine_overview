@@ -197,19 +197,21 @@ if __name__ == '__main__':
     if script_config.verbose:
         print("Loading the required dataset files.")
     if script_config.file_format == 'pl':
-        cohort_df = pl.scan_parquet(script_config.patient_file)
-        lab_df = pl.scan_parquet(script_config.labresults_file)
-        diag_df = pl.scan_parquet(script_config.diag_file)
-        meds_df = pl.scan_parquet(script_config.med_file)
+        suffix = '.pl'
+        cohort_df = pl.scan_parquet(script_config.patient_file + suffix)
+        lab_df = pl.scan_parquet(script_config.labresults_file+ suffix)
+        diag_df = pl.scan_parquet(script_config.diag_file+ suffix)
+        meds_df = pl.scan_parquet(script_config.med_file+ suffix)
         if parse.retrieve_sdoh_cvs:
-            cvs_df = pl.scan_parquet(script_config.cvs_file)
+            cvs_df = pl.scan_parquet(script_config.cvs_file+ suffix)
     else:
-        cohort_df = pl.scan_csv(script_config.patient_file)
-        lab_df = pl.scan_csv(script_config.labresults_file)
-        diag_df = pl.scan_csv(script_config.diag_file)
-        meds_df = pl.scan_csv(script_config.med_file)
+        suffix ='.csv'
+        cohort_df = pl.scan_csv(script_config.patient_file+ suffix)
+        lab_df = pl.scan_csv(script_config.labresults_file+ suffix)
+        diag_df = pl.scan_csv(script_config.diag_file+ suffix)
+        meds_df = pl.scan_csv(script_config.med_file+ suffix)
         if not parse.retrieve_sdoh_cvs:
-            cvs_df = pl.scan_csv(script_config.cvs_file)
+            cvs_df = pl.scan_csv(script_config.cvs_file+ suffix)
 
 
     if script_config.verbose:
