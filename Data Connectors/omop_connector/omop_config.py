@@ -46,11 +46,14 @@ icd9_to_icd10_mapping = './icd_code_to_phecode/icd9to10dictionary.txt'
 
 
 #  Columns names required in each dataset
-cohort_columns = ['person_id',
-                  'age_at_index'
+patient_columns = ['person_id',
+                  'Age_at_index'
                    'Outcome',
+                   'Race_CD',
+                   'Hispanic_CD',
+                   'Sex_CD',
                 #    'Encounter',
-                   'zipcode'] ### Need Gender, Race and Hispanic columns
+                   'Zipcode'] ### Need Gender, Race and Hispanic columns
 
 lab_results_columns = ['person_id',
                        'measurement_source_value', # LOINC code
