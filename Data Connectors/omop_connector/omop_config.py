@@ -115,6 +115,7 @@ weight_loincs = [
     "8351-9"
 ]
 
+
 weight_loinc_unit = ['kg','lb']
 
 height_loincs = [
@@ -124,6 +125,8 @@ height_loincs = [
     "8306-3",
     "8308-9"
 ]
+
+bmi_loinc_codes = ['']
 
 height_loinc_unit = ['in']
 
@@ -183,7 +186,7 @@ acs_Cvs_fields = fields = ["B19083_001E", # GINI INDEX OF INCOME INEQUALITY
           "B15003_024E",
           "B15003_025E"
          ]
-census_key = '' #### KEY GOES HERE
+census_key = '37b45722388e8431b5070d0c77e49826205abffe' #### KEY GOES HERE
 ############################################## UNITS VALIDATION DICT ##############################################
 
 units_validation_tuple_boruta = {

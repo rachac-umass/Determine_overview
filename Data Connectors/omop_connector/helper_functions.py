@@ -14,6 +14,7 @@ import numpy as np
 import requests
 import pickle
 import us
+from tqdm import tqdm
 
 from omop_config import *
 
@@ -27,7 +28,12 @@ def check_columns(df: pl.DataFrame, target_columns: list[str])-> bool:
         df (pd.DataFrame): The DataFrame to validate.
         target_columns (list[str]): The list of target column names for the DataFrame.
     """
-    assert set(target_columns).issubset(df.columns), f'Target columns are not same as dataframe columns.'
+    # is_subset = set(target_columns).issubset(df.columns)
+    # print(target_columns)
+    # print(df.columns)
+    # print(is_subset)
+
+    assert set(target_columns).issubset(df.collect_schema().names()), f'Target columns are not same as dataframe columns.'
 
 
 def get_active_ingredient(rxcui):
@@ -59,7 +65,7 @@ def get_active_ingredient(rxcui):
            print(f"An error occurred: {e}")
 
        try:
-            response = requests.url(f'https://rxnav.nlm.nih.gov/REST/rxcui/{rxcui}/historystatus.json?caller=RxNav')
+            response = requests.get(f'https://rxnav.nlm.nih.gov/REST/rxcui/{rxcui}/historystatus.json?caller=RxNav')
             data = response.json()
                         
             active_ingredient_name = data['rxcuiStatusHistory']['definitionalFeatures'
@@ -71,7 +77,7 @@ def get_active_ingredient(rxcui):
             return []
        
 
-def meds_rxcui_to_api(list_rxcui, dict_rxnorm_active_ing = None, verbose = False):
+def meds_rxcui_to_api(list_rxcui, verbose = False):
     """
     Converts a list of RxNorm concept unique identifiers (RxCUIs) to their corresponding active ingredient information.
 
@@ -87,13 +93,18 @@ def meds_rxcui_to_api(list_rxcui, dict_rxnorm_active_ing = None, verbose = False
         list: A list of dataframes containing active ingredient information for each RxCUI.
               If no active ingredient is associated with a code, a placeholder list with the RxCUI is added.
     """
-    assert dict_rxnorm_active_ing is not None, "Parameter 'dict_rxnorm_active_ing' cannot be None"
+    # assert dict_rxnorm_active_ing is not None, "Parameter 'dict_rxnorm_active_ing' cannot be None"
 
     active_ingredients_list_dataframe = []
     no_act_ing_codes = []
+    dict_rxnorm_active_ing = {}
     
-    for rxnorm in list_rxcui:
-        rx_code = rxnorm.split(':')[-1].strip()
+    for rx_code in tqdm(list_rxcui):
+
+        rx_code =str(rx_code)
+        if ':' in rx_code:
+            rx_code = rx_code.split(':')[-1].strip()
+
         try:
             if dict_rxnorm_active_ing[rx_code] == []:
                 # print(rx_code)
@@ -109,10 +120,30 @@ def meds_rxcui_to_api(list_rxcui, dict_rxnorm_active_ing = None, verbose = False
         print("Rx code for which active ingrident cannot be found: ")
         print(no_act_ing_codes)
 
+    print(dict_rxnorm_active_ing)
     return active_ingredients_list_dataframe
 
-def normalize_active_ingridents(name):
-    return ('_').join(part.strip() for part in name.split('/'))
+# def normalize_active_ingridents(name):
+#     if type(name) == str:
+#         return ('_').join(part.strip() for part in name.split('/'))
+#     else:
+#         print("value passed and its type: ",name, " and ", type(name))
+#         raise ValueError("name parameter is not string")
+
+def normalize_active_ingridents(batch: pl.Series) -> pl.Series:
+    # The function will be applied to a Series batch, so use .apply on the batch
+    return batch.apply(
+        lambda name: ('_').join(part.strip() for part in name.split('/'))
+        if isinstance(name, str)
+        else (
+            print("value passed and its type: ", name, " and ", type(name)) or
+            (_ for _ in ()).throw(ValueError("name parameter is not string"))
+        )
+    )
+
+def normalize_active_ingredients_expr(col: pl.Expr) -> pl.Expr:
+    # Use .str.split('/').list.join('_') for the string manipulation
+    return col.str.split('/').list.join('_')
 
 
 def read_icd_mappings(file_path):
@@ -193,11 +224,11 @@ def clean_zipcode(zipcode: str)-> str:
     if '-' in zipcode:
         zipcode = zipcode.split('-')[0]
 
-        if len(zipcode)==4:
+    if len(zipcode)==4:
             return '0'+zipcode
-        elif len(zipcode) ==5:
+    elif len(zipcode) ==5:
             return zipcode
-        else:
+    else:
             return None 
  
 
@@ -212,7 +243,8 @@ def get_acs_data(census_object, zipstate_object, cds_fields, zipcode, year, miss
         return_dict['pctCollGrad'] = missing_value
 
         return return_dict 
-          
+    
+    
     try:
         state_fip = us.states.mapping('abbr', 'fips')[zipstate_object[zipcode].state]
 
@@ -222,6 +254,8 @@ def get_acs_data(census_object, zipstate_object, cds_fields, zipcode, year, miss
         zcta=zipcode,
         year=year
         )
+
+        # print(acs_data)
 
         try:
             acs_data[0]['ACS_poverty'] = np.round(((acs_data[0]['C17002_002E'] + acs_data[0]['C17002_003E'])/acs_data[0]['B01003_001E']) * 100,2)
@@ -238,15 +272,17 @@ def get_acs_data(census_object, zipstate_object, cds_fields, zipcode, year, miss
             acs_data[0]['pctCollGrad'] = missing_value
 
         return_dict = acs_data[0]
+
+
     except:
-        # Handle invalid zipcodes
+        #Handle invalid zipcodes
         return_dict = dict(zip(cds_fields,[missing_value]*len(cds_fields)))
         return_dict['ACS_poverty'] = missing_value
         return_dict['ACS_unemployment'] = missing_value
         return_dict['pctCollGrad'] = missing_value
 
     
-    return return_dict
+        return return_dict
 
 
 ############# demographic functions #############

@@ -13,7 +13,7 @@ TO-DO:
 """
 
 import omop_config
-from helper_functions import check_columns,  meds_rxcui_to_api, get_active_ingredient, normalize_active_ingridents
+from helper_functions import check_columns,  meds_rxcui_to_api, get_active_ingredient, normalize_active_ingridents, normalize_active_ingredients_expr
 from helper_functions import read_icd_mappings, get_phecode_from_concept_cd
 from helper_functions import custom_height_aggregator,convert_wt_kg_to_lb
 from helper_functions import func_map_race, func_map_sex, func_map_ethinicity
@@ -24,7 +24,11 @@ import polars as pl
 import numpy as np
 import pyreadr
 from pyzipcode import ZipCodeDatabase
+
 from census import Census
+from us import states
+
+import sys
 
 
 ### Command line aruments ###
@@ -247,28 +251,35 @@ if __name__ == '__main__':
         check_columns(cvs_df, omop_config.cvs_columns)
 
     ##### Required columns from each dataset for modeling ####
-    target_medication_columns = omop_config.target_medication_columns
-    target_lab_results_columns = omop_config.target_lab_results_columns
-    target_diag_columns = omop_config.target_diag_columns
-    target_bmi_bp_columns = omop_config.target_bmi_bp_columns
-    if not args.retrieve_sdoh_cvs:
-        target_cvs_columns = omop_config.target_cvs_columns
+    # target_medication_columns = omop_config.target_medication_columns
+    # target_lab_results_columns = omop_config.target_lab_results_columns
+    # target_diag_columns = omop_config.target_diag_columns
+    # target_bmi_bp_columns = omop_config.target_bmi_bp_columns
+    # if not args.retrieve_sdoh_cvs:
+    #     target_cvs_columns = omop_config.target_cvs_columns
 
     ############################### Data transformation for required columns ############################### 
 
     ############## Transform medications ##############
     if script_config.medication_transformation == 'api':
-        assert 'ancestor_drug_concept_name' in meds_df.columns
-        meds_df = meds_df.columns(pl.col('ancestor_drug_concept_name').map_batches(normalize_active_ingridents).alias('Active_ingrident'))
-        pass
+        assert 'ancestor_drug_concept_name' in meds_df.collect_schema().names()
+        # meds_df = meds_df.with_columns(pl.col('ancestor_drug_concept_name').map_batches(normalize_active_ingridents, return_dtype = pl.Utf8).alias('Active_ingrident'))
+        meds_df = meds_df.with_columns(
+                        normalize_active_ingredients_expr(pl.col('ancestor_drug_concept_name')).alias('Active_ingrident')
+                        )
 
     elif script_config.medication_transformation == 'rxcui_api':
-        meds_df = meds_df.with_columns(pl.col('concept_id').map_batches(meds_rxcui_to_api).alias('Active_ingrident'))
+        rxcuis_list = meds_df.select(pl.col('concept_code')).collect()['concept_code'].to_list()
+        act_ing_list = meds_rxcui_to_api(rxcuis_list)
+
+        final_act_ing_list = ["_".join(sublist) if len(sublist) > 1 else sublist[0] for sublist in act_ing_list]
+
+        meds_df = meds_df.with_columns(Active_ingrident = pl.Series(final_act_ing_list))
 
     # Filtering patients who are on diabetes type 2 medications
     act_list_to_drop = [get_active_ingredient(rxcui) for rxcui in omop_config.ignore_rxnorm_codes]
     medications_to_drop = ["_".join(sublist) if len(sublist) > 1 else sublist[0] for sublist in act_list_to_drop]
-    med_ignore_patient_id = np.unique(meds_df.filter(pl.col('Active_ingrident').is_in(medications_to_drop)).collect()['patient_id'].to_list())
+    med_ignore_patient_id = np.unique(meds_df.filter(pl.col('Active_ingrident').is_in(medications_to_drop)).collect()['person_id'].to_list())
 
     ############## Transform diagnoses codes to PheWas codes/ATC codes ##############
     diag_df = diag_df.with_columns((pl.col("vocabulary_id")+':'+pl.col('concept_code')).alias('ICD_code'))
@@ -283,14 +294,14 @@ if __name__ == '__main__':
     lab_df = lab_df.rename({"measurement_source_value": "LabLOINC", "unit_source_value": "Units","value_as_number":'Result_Number'})
 
     # Convert tuple to list of dictionaries
-    dict_loinc_unit = [dict(zip(keys, item)) for item in omop_config.lab_loinc_and_unit_tuple]
+    # dict_loinc_unit = [dict(zip(keys, item)) for item in omop_config.lab_loinc_and_unit_tuple]
 
     #### Filtering boruta features ####
     # lab_final_df = lab_df.filter(
     #     pl.struct(["LabLOINC", "Units"]).is_in(dict_loinc_unit)
     # )
 
-    combo_df = pl.DataFrame(tuple(omop_config.units_validation_tuple_boruta.items), schema=['LabLOINC', 'Result_Unit'])
+    combo_df = pl.DataFrame(tuple(omop_config.units_validation_tuple_boruta.items()), schema=['LabLOINC', 'Result_Unit'])
     
     # Create a struct column in combo_df for unique combinations
     combo_structs = combo_df.select(pl.struct(["LabLOINC", "Result_Unit"]).alias("combo_struct"))["combo_struct"]
@@ -300,39 +311,45 @@ if __name__ == '__main__':
         pl.struct(["LabLOINC", "Result_Unit"]).is_in(combo_structs)
     )
 
-    lab_final_df = lab_final_df.group_by(['patient_id','LabLOINC']).agg(pl.col('Result_Number').median().alias('Result_Number'))
+    lab_final_df = lab_final_df.group_by(['person_id','LabLOINC']).agg(pl.col('Result_Number').median().alias('Result_Number'))
 
 
     ############## Transform bmi and bp ##############
 
     # *** BMI *** 
     wt_df = lab_df.filter(pl.col('LabLOINC').is_in(omop_config.weight_loincs))
-    assert wt_df.select('Units').collect().is_in(omop_config.weight_loinc_unit).all(), "weight df units column contains values in other than 'kg' or 'lb'"
-    wt_df =wt_df.with_columns(
-        pl.when(pl.col('Units')=='kg').then(pl.col('Result_Number').map_elements(convert_wt_kg_to_lb).otherwise(pl.col('Result_Number'))).alias('Result_Number')
-    )
-    wt_df = wt_df.with_columns(pl.col("NVAL_NUM").cast(pl.Float32))
-    wt_df = wt_df.filter((pl.col('NVAL_NUM') > 65) & (pl.col('NVAL_NUM') < 600))
-    average_weight_per_patient = wt_df.group_by("patient_id").agg([
-        pl.col("NVAL_NUM").median().alias("median_weight")
+    assert wt_df.select('Units').collect()['Units'].is_in(omop_config.weight_loinc_unit).all(), "weight df units column contains values in other than 'kg' or 'lb'"
+    
+    ### Uncomment below later
+    
+    # wt_df =wt_df.with_columns(
+        # pl.when(pl.col('Units')=='kg').then(pl.col('Result_Number').map_elements(convert_wt_kg_to_lb)).otherwise(pl.col('Result_Number')).alias('Result_Number')
+    # )
+    wt_df = wt_df.with_columns(pl.col("Result_Number").cast(pl.Float32))
+    wt_df = wt_df.filter((pl.col('Result_Number') > 65) & (pl.col('Result_Number') < 600))
+    average_weight_per_patient = wt_df.group_by("person_id").agg([
+        pl.col("Result_Number").median().alias("median_weight")
         ])
     
     height_df = lab_df.filter(pl.col('LabLOINC').is_in(omop_config.height_loincs))
     
     # Asserting units be in inches
-    assert height_df.select('Units').collect().is_in(omop_config.height_loinc_unit).all(), "height df units column contains values other than 'inches' or 'in'"
+    assert height_df.select('Units').collect()['Units'].is_in(omop_config.height_loinc_unit).all(), "height df units column contains values other than 'inches' or 'in'"
     
-    mode_height_df = height_df.group_by("patient_id").agg([
+    mode_height_df = height_df.group_by("person_id").agg([
     pl.col("Result_Number").map_elements(custom_height_aggregator, return_dtype = pl.Float32).alias("mode_height")
     ])
 
-    # Join the DataFrames on 'patient_id'
-    bmi_ht_wt_df = mode_height_df.join(average_weight_per_patient, on="patient_id", how="inner")
+    # Join the DataFrames on 'person_id'
+    bmi_ht_wt_df = mode_height_df.join(average_weight_per_patient, on="person_id", how="inner")
 
     # Calculate BMI
     bmi_ht_wt_df = bmi_ht_wt_df.with_columns(
         (pl.col("median_weight") / (pl.col("mode_height") ** 2) * 703).alias("BMI")
     )
+
+    # print("bmi_wht_wt_df")
+    # print(bmi_ht_wt_df.collect().head())
 
     bmi_ht_wt_df = bmi_ht_wt_df.filter((pl.col('BMI') > omop_config.bmi_range[0]) &
                              (pl.col('BMI') < omop_config.bmi_range[1]))
@@ -345,8 +362,8 @@ if __name__ == '__main__':
 
 
     #### Add units validation for dia and sys bp
-    assert dia_bp_df.select('Units').collect().is_in(omop_config.dia_sys_stolic_unit).all(), "diastolic df units column contains values other than 'mm Hg', 'mmHg' or 'mm[Hg]'"
-    assert sys_bp_df.select('Units').collect().is_in(omop_config.dia_sys_stolic_unit).all(), "systolic df units column contains values other than 'mm Hg', 'mmHg' or 'mm[Hg]'"
+    assert dia_bp_df.select('Units').collect()['Units'].is_in(omop_config.dia_sys_stolic_unit).all(), "diastolic df units column contains values other than 'mm Hg', 'mmHg' or 'mm[Hg]'"
+    assert sys_bp_df.select('Units').collect()['Units'].is_in(omop_config.dia_sys_stolic_unit).all(), "systolic df units column contains values other than 'mm Hg', 'mmHg' or 'mm[Hg]'"
 
 
     dia_bp_df  = dia_bp_df.filter((pl.col('Result_Number') > omop_config.diastolic_range[0]) &
@@ -354,18 +371,22 @@ if __name__ == '__main__':
     sys_bp_df  = sys_bp_df.filter((pl.col('Result_Number') > omop_config.systolic_range[0]) &
                                 (pl.col('Result_Number') < omop_config.systolic_range[1]))
     
-    average_dia_bp_per_patient = dia_bp_df.group_by("patient_id").agg([
+    average_dia_bp_per_patient = dia_bp_df.group_by("person_id").agg([
         pl.col("Result_Number").mean().alias("median_diastolic_value"),
 
     ])
 
-    average_sys_bp_per_patient = sys_bp_df.group_by("patient_id").agg([
+    average_sys_bp_per_patient = sys_bp_df.group_by("person_id").agg([
         pl.col("Result_Number").mean().alias("median_systolic_value"),
 
     ])
 
+    # print(average_dia_bp_per_patient.fetch(5))
+    # print(average_dia_bp_per_patient.fetch(5))
+    # print(bmi_ht_wt_df.collect().head())
+
     ############## Transform patient/cohort file (demographics) ##############
-    cohort_df = cohort_df.with_columns(pl.col('age_at_index').map_elements(lambda x : '18-34' if x <= 34 \
+    cohort_df = cohort_df.with_columns(pl.col('Age_at_index').map_elements(lambda x : '18-34' if x <= 34 \
                                                         else '35-44' if 35<=x<=44 else '45-54'\
                                                         if 45<=x<=54 else '55-64' if 55<=x<=64 else \
                                                         '65-74' if  65<=x<=74 else '75_older').alias('Age_group'))
@@ -388,6 +409,7 @@ if __name__ == '__main__':
                   '75_older':5    
     }
     cohort_df = cohort_df.with_columns(pl.col('Age_group').replace_strict(age_group_dict).alias('Age_group'))
+    print(cohort_df.collect()['Race_CD'])
 
 
     ############## Creating SDoH CVS ##############
@@ -396,8 +418,28 @@ if __name__ == '__main__':
         zcdb = ZipCodeDatabase()
         census = Census(omop_config.census_key)
 
-        pat_zipcodes_data = cohort_df.select('zipcode').collect()['zipcode'].to_list()
-        pat_zipcodes_data_clean = [clean_zipcode(zip) for zip in pat_zipcodes_data]
+        try:
+            # Minimal call: Get the name and total population (B01003_001E) for Washington state (FIPS 53)
+            # from the 2020 Decennial Census SF1 dataset
+            test_data = census.acs5.get(('NAME', 'B25034_010E'), {'for': 'state:{}'.format(states.MD.fips)})
+
+            if test_data and isinstance(test_data, list) and len(test_data) > 0:
+                print("API key is active and working.")
+                print(f"Successfully retrieved test data: {test_data}")
+            else:
+                print("API key may be inactive or invalid. Received no data.")
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            print("API key is likely invalid or inactive.")
+            print("Ensure your key is activated via the email link provided by the Census Bureau.")
+            sys.exit(1)
+
+        
+
+        pat_zipcodes_data = cohort_df.select('Zipcode').collect()['Zipcode'].to_list()
+
+        pat_zipcodes_data_clean = [clean_zipcode(str(zip)) for zip in pat_zipcodes_data]
         pat_zipcodes_data_clean_uni = np.unique(pat_zipcodes_data_clean)
         acs_data_zips = {}
                     
@@ -412,7 +454,7 @@ if __name__ == '__main__':
         for zip in pat_zipcodes_data_clean:
             pat_acs_data.append(acs_data_zips[zip])
 
-        cvs_df = pl.from_dict(pat_acs_data)
+        cvs_df = pl.DataFrame(pat_acs_data).lazy()
 
         cvs_df = cvs_df.rename({'B19083_001E': 'ACS_GINI',
                                   'B19013_001E': 'ACS_MedHHIncome',
@@ -423,15 +465,15 @@ if __name__ == '__main__':
 
     ####### Pivoting and joining the datasets #######
     meds_df = meds_df.with_columns(pl.lit(1).alias('usage'))
-    medications_pivot_df = meds_df.pivot(on = 'Active_ingrident', index = 'patient_id', values = 'usage', aggregate_function = 'max')
+    medications_pivot_df = meds_df.pivot(on = 'Active_ingrident', index = 'person_id', values = 'usage', aggregate_function = 'max')
 
-    lab_results_pivot_df = lab_df.pivot(on = 'LabLOINC', index = 'patient_id', values = 'Result_Number')
+    lab_results_pivot_df = lab_df.pivot(on = 'LabLOINC', index = 'person_id', values = 'Result_Number')
     
     diag_df = diag_df.with_columns(pl.lit(1).alias('Usage'))
-    diagnoses_pivot_df = diag_df.pivot(on = 'phecode_map', index = 'patient_id', values = 'Usage', aggregate_function = 'max')
+    diagnoses_pivot_df = diag_df.pivot(on = 'phecode_map', index = 'person_id', values = 'Usage', aggregate_function = 'max')
 
     community_vital_pivot_df = cvs_df#.pivot(on = 'Indicator', 
-                                                    # index ='patient_id', 
+                                                    # index ='person_id', 
                                                     # values ='FACT', 
                                                     # aggregate_function = 'first')
     
@@ -443,37 +485,37 @@ if __name__ == '__main__':
 
 
     ###### Removing patients with active ingredient of diabetes from required patient ids #####
-    med_pids = np.unique(meds_df.select(['patient_id']).collect()['patient_id'].to_list())
-    dx_pids = np.unique(diag_df.select(['patient_id']).collect()['patient_id'].to_list())
-    lab_pid = np.unique(lab_df.select(['patient_id']).collect()['patient_id'].to_list())
+    med_pids = np.unique(meds_df.select(['person_id']).collect()['person_id'].to_list())
+    dx_pids = np.unique(diag_df.select(['person_id']).collect()['person_id'].to_list())
+    lab_pid = np.unique(lab_df.select(['person_id']).collect()['person_id'].to_list())
     req_patients = set(med_pids) | set(dx_pids) | set(lab_pid)
 
     req_patients -= set(med_ignore_patient_id)
 
     ##################### Joining the pivoted feature dataframes #####################
-    cohort_df = cohort_df.filter(pl.col('patient_id').is_in(req_patients))
+    cohort_df = cohort_df.filter(pl.col('person_id').is_in(req_patients))
 
-    temp_df = cohort_df.join(medications_pivot_df, on = 'patient_id', how = 'left')
+    temp_df = cohort_df.join(medications_pivot_df, on = 'person_id', how = 'left')
     temp_df = temp_df.fill_null(0)
 
-    temp_df = temp_df.join(diagnoses_pivot_df, on = 'patient_id', how = 'left')
+    temp_df = temp_df.join(diagnoses_pivot_df, on = 'person_id', how = 'left')
     temp_df = temp_df.fill_null(0)
 
-    temp_df = temp_df.join(lab_results_pivot_df, on = 'patient_id', how = 'left')
+    temp_df = temp_df.join(lab_results_pivot_df, on = 'person_id', how = 'left')
     if args.missing_numerical_value_negative_10:
         temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
 
-    temp_df = temp_df.join(bmi_ht_wt_df, on = 'patient_id', how = 'left')
+    temp_df = temp_df.join(bmi_ht_wt_df, on = 'person_id', how = 'left')
     if args.missing_numerical_value_negative_10:
         temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
-    temp_df = temp_df.join(dia_bp_df, on = 'patient_id', how = 'left')
+    temp_df = temp_df.join(dia_bp_df, on = 'person_id', how = 'left')
     if args.missing_numerical_value_negative_10:
         temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
-    temp_df = temp_df.join(sys_bp_df, on = 'patient_id', how = 'left')
+    temp_df = temp_df.join(sys_bp_df, on = 'person_id', how = 'left')
     if args.missing_numerical_value_negative_10:
         temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
 
-    temp_df = temp_df.join(cvs_df, on = 'patient_id',how ='left')
+    temp_df = temp_df.join(cvs_df, on = 'person_id',how ='left')
     if args.missing_numerical_value_negative_10:
         temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
 
