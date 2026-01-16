@@ -175,8 +175,8 @@ class script_config:
     # folder and files to use #
     data_folder = args.data_folder
 
-    cohort_file = data_folder + omop_config.patient_file
-    lab_file = data_folder + omop_config.labresults_file
+    patient_file = data_folder + omop_config.patient_file
+    labresults_file = data_folder + omop_config.labresults_file
     diag_file = data_folder + omop_config.diag_file
     med_file = data_folder + omop_config.med_file
     bmi_bp_file = data_folder + omop_config.bmi_and_bp_file
@@ -194,10 +194,10 @@ class script_config:
     patient_file_columns = omop_config.patient_columns
 
     # Medications transformation argument 
-    medications_transformation = args.medication_tranformation
+    medication_transformation = args.medication_transformation
 
     # Final data columns required #
-    final_columns_required = omop_config.modeling_columns
+    final_columns_required = omop_config.target_modeling_features
 
 
 ############# Main code to run #################
@@ -212,7 +212,7 @@ if __name__ == '__main__':
         lab_df = pl.scan_parquet(script_config.labresults_file+ suffix)
         diag_df = pl.scan_parquet(script_config.diag_file+ suffix)
         meds_df = pl.scan_parquet(script_config.med_file+ suffix)
-        if parse.retrieve_sdoh_cvs:
+        if args.retrieve_sdoh_cvs:
             cvs_df = pl.scan_parquet(script_config.cvs_file+ suffix)
     else:
         suffix ='.csv'
@@ -220,7 +220,7 @@ if __name__ == '__main__':
         lab_df = pl.scan_csv(script_config.labresults_file+ suffix)
         diag_df = pl.scan_csv(script_config.diag_file+ suffix)
         meds_df = pl.scan_csv(script_config.med_file+ suffix)
-        if not parse.retrieve_sdoh_cvs:
+        if not args.retrieve_sdoh_cvs:
             cvs_df = pl.scan_csv(script_config.cvs_file+ suffix)
 
 
@@ -238,12 +238,12 @@ if __name__ == '__main__':
     if script_config.verbose:
         print("Column validation across all files(cohort, lab results, diagnoses, medications and cvs)")
     #### Column names validation ####
-    check_columns(cohort_df, omop_config.cohort_columns)
+    check_columns(cohort_df, omop_config.patient_columns)
     check_columns(lab_df, omop_config.lab_results_columns)
     check_columns(diag_df, omop_config.diag_columns)
     check_columns(meds_df, omop_config.medication_columns)
     # check_columns(bmi_bp_df, omop_config.bmi_bp_columns) #### Not required for omop as bmi and bp are extracted from lab results
-    if not parse.retrieve_sdoh_cvs:
+    if not args.retrieve_sdoh_cvs:
         check_columns(cvs_df, omop_config.cvs_columns)
 
     ##### Required columns from each dataset for modeling ####
@@ -251,19 +251,19 @@ if __name__ == '__main__':
     target_lab_results_columns = omop_config.target_lab_results_columns
     target_diag_columns = omop_config.target_diag_columns
     target_bmi_bp_columns = omop_config.target_bmi_bp_columns
-    if not parse.retrieve_sdoh_cvs:
+    if not args.retrieve_sdoh_cvs:
         target_cvs_columns = omop_config.target_cvs_columns
 
     ############################### Data transformation for required columns ############################### 
 
     ############## Transform medications ##############
-    if script_config.medications_transformation == 'api':
-        assert 'concept_name' in meds_df.columns
-        meds_df = meds_df.columns(pl.col('concept_name').map_batches(normalize_active_ingridents).alias('Active_ingrident'))
+    if script_config.medication_transformation == 'api':
+        assert 'ancestor_drug_concept_name' in meds_df.columns
+        meds_df = meds_df.columns(pl.col('ancestor_drug_concept_name').map_batches(normalize_active_ingridents).alias('Active_ingrident'))
         pass
 
-    elif script_config.medications_transformation == 'rxcui_api':
-        meds_df = meds_df.with_columns(pl.col['concept_id'].map_batches(meds_rxcui_to_api).alias('Active_ingrident'))
+    elif script_config.medication_transformation == 'rxcui_api':
+        meds_df = meds_df.with_columns(pl.col('concept_id').map_batches(meds_rxcui_to_api).alias('Active_ingrident'))
 
     # Filtering patients who are on diabetes type 2 medications
     act_list_to_drop = [get_active_ingredient(rxcui) for rxcui in omop_config.ignore_rxnorm_codes]
@@ -271,7 +271,7 @@ if __name__ == '__main__':
     med_ignore_patient_id = np.unique(meds_df.filter(pl.col('Active_ingrident').is_in(medications_to_drop)).collect()['patient_id'].to_list())
 
     ############## Transform diagnoses codes to PheWas codes/ATC codes ##############
-    diag_df = diag_df.with_columns((pl.col("vocabulary_id")+':'+pl.col('condition_source_value')).alias('ICD_code'))
+    diag_df = diag_df.with_columns((pl.col("vocabulary_id")+':'+pl.col('concept_code')).alias('ICD_code'))
     diag_df = diag_df.with_columns(pl.col("ICD_code").map_elements(get_phecode_from_concept_cd, return_dtype = pl.Utf8).alias("phecode_map"))
 
     ############## Transform lab results: Filter required lab results and unit standardization and aggregation (median) ##############
@@ -280,7 +280,7 @@ if __name__ == '__main__':
     keys = ("measurement_source_value", "unit_source_value")
 
     # renaming columns
-    lab_df = lab_df.rename({"measurement_source_value": "LabLOINC", "unit_source_value": "Units","value_source_value":'Result_Number'})
+    lab_df = lab_df.rename({"measurement_source_value": "LabLOINC", "unit_source_value": "Units","value_as_number":'Result_Number'})
 
     # Convert tuple to list of dictionaries
     dict_loinc_unit = [dict(zip(keys, item)) for item in omop_config.lab_loinc_and_unit_tuple]
@@ -391,7 +391,7 @@ if __name__ == '__main__':
 
 
     ############## Creating SDoH CVS ##############
-    if parse.retrieve_sdoh_cvs:
+    if args.retrieve_sdoh_cvs:
 
         zcdb = ZipCodeDatabase()
         census = Census(omop_config.census_key)

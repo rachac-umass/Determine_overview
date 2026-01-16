@@ -27,7 +27,7 @@ def check_columns(df: pl.DataFrame, target_columns: list[str])-> bool:
         df (pd.DataFrame): The DataFrame to validate.
         target_columns (list[str]): The list of target column names for the DataFrame.
     """
-    assert target_columns in df.columns , f'Target columns are not same as dataframe columns.'
+    assert set(target_columns).issubset(df.columns), f'Target columns are not same as dataframe columns.'
 
 
 def get_active_ingredient(rxcui):
@@ -112,7 +112,7 @@ def meds_rxcui_to_api(list_rxcui, dict_rxnorm_active_ing = None, verbose = False
     return active_ingredients_list_dataframe
 
 def normalize_active_ingridents(name):
-    return ('_').join(name.split(','))
+    return ('_').join(part.strip() for part in name.split('/'))
 
 
 def read_icd_mappings(file_path):

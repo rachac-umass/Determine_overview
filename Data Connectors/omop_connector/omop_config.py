@@ -47,7 +47,7 @@ icd9_to_icd10_mapping = './icd_code_to_phecode/icd9to10dictionary.txt'
 
 #  Columns names required in each dataset
 patient_columns = ['person_id',
-                  'Age_at_index'
+                  'Age_at_index',
                    'Outcome',
                    'Race_CD',
                    'Hispanic_CD',
@@ -57,16 +57,17 @@ patient_columns = ['person_id',
 
 lab_results_columns = ['person_id',
                        'measurement_source_value', # LOINC code
-                       'value_source_value', # lab result measurement value
+                       'value_as_number', # lab result measurement value
                        'unit_source_value'] # Unit of measurement
 
 diag_columns= ['person_id',
                'vocabulary_id', ## ICD9 or ICD10
-               'condition_source_value'] ## ICD code or concept_code
+               'concept_code'] ## ICD code or concept_code
 
 medication_columns = ['person_id',
+                      'drug_exposure_start_date',
                       'concept_code', ## rxnorm code from table concept
-                      'concept_name', ## Active ingrident
+                      'ancestor_drug_concept_name', ## Active ingrident
                       ]
 
 cvs_columns = ['person_id',
@@ -77,7 +78,7 @@ cvs_columns = ['person_id',
                 'ACS_pctCollGrad'] #needs extraction from aqhs
 
 # Column names required for final model or modeling dataset
-target_features = ['Age_group', 'azithromycin', 'levothyroxine', 'acyclovir',
+target_modeling_features = ['Age_group', 'azithromycin', 'levothyroxine', 'acyclovir',
        'ceftriaxone', 'phe_401.1', 'phe_271.3', 'phe_41.0', 'phe_278.11',
        #'phe_649.1', 
         'LOINC:2085-9', 'LOINC:2345-7', 'LOINC:74774-1',
