@@ -1,0 +1,7 @@
+FROM python:3.12 # This is Linux + python 3.12
+WORKDIR /app
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+ENTRYPOINT ['python']
+CMD ['data_connector.py']
+[] # For additional arguments

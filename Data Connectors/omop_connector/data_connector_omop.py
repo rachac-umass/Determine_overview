@@ -107,7 +107,7 @@ parse.add_argument(
 parse.add_argument(
     '--missing_numerical_value_negative_10',
     action=argparse.BooleanOptionalAction,
-    default=True,
+    default=False,
     help=(
         "If enabled, sets missing values for numerical columns to -10. "
         "Recommended: keep enabled. Default: %(default)s"
@@ -117,7 +117,7 @@ parse.add_argument(
 parse.add_argument(
     '--retrieve_sdoh_cvs',
     action=argparse.BooleanOptionalAction,
-    default=True,
+    default=False,
     help=(
         "If enabled, collects SDoH zipcode-level from ACS."
         "Use this if cvs_data file is not available. Default: %(default)s"
@@ -172,6 +172,16 @@ parse.add_argument(
         "Default: %(default)s."
     )
 )
+
+parse.add_argument(
+    '--census_api_key',
+    type = str,
+    default = None,
+    help=(
+        "(Required) Your U.S. Census API key. This argument must be provided to access Census data."
+    )
+)
+
 
 args = parse.parse_args()
 
@@ -416,7 +426,7 @@ if __name__ == '__main__':
     if args.retrieve_sdoh_cvs:
 
         zcdb = ZipCodeDatabase()
-        census = Census(omop_config.census_key)
+        census = Census(args.census_api_key)
 
         try:
             # Minimal call: Get the name and total population (B01003_001E) for Washington state (FIPS 53)
