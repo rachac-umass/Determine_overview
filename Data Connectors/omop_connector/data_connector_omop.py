@@ -322,8 +322,6 @@ if __name__ == '__main__':
     )
 
     lab_final_df = lab_final_df.group_by(['person_id','LabLOINC']).agg(pl.col('Result_Number').median().alias('Result_Number'))
-
-
     ############## Transform bmi and bp ##############
 
     # *** BMI *** 
@@ -358,9 +356,6 @@ if __name__ == '__main__':
         (pl.col("median_weight") / (pl.col("mode_height") ** 2) * 703).alias("BMI")
     )
 
-    # print("bmi_wht_wt_df")
-    # print(bmi_ht_wt_df.collect().head())
-
     bmi_ht_wt_df = bmi_ht_wt_df.filter((pl.col('BMI') > omop_config.bmi_range[0]) &
                              (pl.col('BMI') < omop_config.bmi_range[1]))
 
@@ -391,25 +386,18 @@ if __name__ == '__main__':
 
     ])
 
-    # print(average_dia_bp_per_patient.fetch(5))
-    # print(average_dia_bp_per_patient.fetch(5))
-    # print(bmi_ht_wt_df.collect().head())
-
     ############## Transform patient/cohort file (demographics) ##############
     cohort_df = cohort_df.with_columns(pl.col('Age_at_index').map_elements(lambda x : '18-34' if x <= 34 \
                                                         else '35-44' if 35<=x<=44 else '45-54'\
                                                         if 45<=x<=54 else '55-64' if 55<=x<=64 else \
                                                         '65-74' if  65<=x<=74 else '75_older').alias('Age_group'))
     
-
-
     
     cohort_df = cohort_df.with_columns( pl.col('Sex_CD').map_elements(func_map_sex, return_dtype = pl.Utf8).alias('Sex_CD'),
                                                pl.col('Race_CD').map_elements(func_map_race, return_dtype = pl.Utf8).alias('Race_CD'),
                                                pl.col('Hispanic_CD').map_elements(func_map_ethinicity, return_dtype = pl.Utf8).alias('Hispanic_CD'),
                                             #    pl.col('Gender_CD').map_elements(clean_prefix_data, return_dtype = pl.Utf8).alias('Gender_CD')
-                                  )
-
+                                  )    
 
     age_group_dict = {'18-34': 0,
                   '35-44': 1,
@@ -514,11 +502,12 @@ if __name__ == '__main__':
     temp_df = temp_df.join(lab_results_pivot_df, on = 'person_id', how = 'left')
     if args.missing_numerical_value_negative_10:
         temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
-
     temp_df = temp_df.join(bmi_ht_wt_df, on = 'person_id', how = 'left')
+
     if args.missing_numerical_value_negative_10:
         temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
     temp_df = temp_df.join(dia_bp_df, on = 'person_id', how = 'left')
+    
     if args.missing_numerical_value_negative_10:
         temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
     temp_df = temp_df.join(sys_bp_df, on = 'person_id', how = 'left')
