@@ -16,6 +16,7 @@ diag_file = 'omop_diagnoses'
 med_file = 'omop_medications'
 bmi_and_bp_file = 'omop_bmi_and_bp'
 cvs_file = 'omop_cvs'
+lab_vitals_results_file = 'omop_labresults_vitals'
 
 # secret key and fields for census data
 census_key = ''
@@ -39,10 +40,14 @@ missing_numerical_replace_val = -10
 # Lab results(loincs + required units) includes bmi and bp as well
 
 # phemap paths
-icd10_phe = './icd_code_to_phecode/Phecode_map_v1_2_icd10cm_beta.csv'
-icd9_phe_v1 = './icd_code_to_phecode/phecode_map_v1_2_icd9.csv'
-icd9_phe_v2 = './icd_code_to_phecode/phemap (1).rda'
-icd9_to_icd10_mapping = './icd_code_to_phecode/icd9to10dictionary.txt'
+icd10_phe = './helper_datasets/icd_code_to_phecode/Phecode_map_v1_2_icd10cm_beta.csv'
+icd9_phe_v1 = './helper_datasets/icd_code_to_phecode/phecode_map_v1_2_icd9.csv'
+icd9_phe_v2 = './helper_datasets/icd_code_to_phecode/phemap (1).rda'
+icd9_to_icd10_mapping = './helper_datasets/icd_code_to_phecode/icd9to10dictionary.txt'
+
+de_loincs_path = './helper_datasets/loincs_hem_chem.pkl'
+
+
 
 
 #  Columns names required in each dataset

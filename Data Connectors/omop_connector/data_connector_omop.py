@@ -2,7 +2,7 @@
 Author: Chandra Harsha Rachabathuni
 Date: 2025-10-23
 Description: Python script to transform omop raw data into data required for type-2 diabetes prediction model.
-Version: 1.0
+Version: 2.0
 
 TO-DO:
 1. Add data validator function in helper functions (units validator for sys and dia bp)
@@ -13,12 +13,15 @@ TO-DO:
 """
 
 import omop_config
-from helper_functions import check_columns,  meds_rxcui_to_api, get_active_ingredient, normalize_active_ingridents, normalize_active_ingredients_expr
-from helper_functions import read_icd_mappings, get_phecode_from_concept_cd
-from helper_functions import custom_height_aggregator,convert_wt_kg_to_lb
-from helper_functions import func_map_race, func_map_sex, func_map_ethinicity
-from helper_functions import clean_zipcode, get_acs_data
+from helper_functions import check_columns,  meds_rxcui_to_api, get_active_ingredient, normalize_Active_ingredients, normalize_active_ingredients_expr # medications 
+from helper_functions import loinc_codes_measurement_and_unit_check # lab results
+from helper_functions import read_icd_mappings, get_phecode_from_concept_cd # diagnoses
+from helper_functions import custom_height_aggregator,convert_wt_kg_to_lb, calculate_slope #bmi and bp
+from helper_functions import func_map_race, func_map_sex, func_map_ethinicity # demographics
+from helper_functions import clean_zipcode, get_acs_data # acs or zipcode level sdoh
 
+import os
+import pickle
 import argparse
 import polars as pl
 import numpy as np
@@ -27,6 +30,7 @@ from pyzipcode import ZipCodeDatabase
 
 from census import Census
 from us import states
+
 
 import sys
 
@@ -87,15 +91,24 @@ parse.add_argument(
     help='File format for input data. Choose between "csv" and "parquet". Default: %(default)s'
 )
 
+
 parse.add_argument(
-    '--use_bmi_bp_aggregation',
-    action=argparse.BooleanOptionalAction,
-    default=True,
-    help='Aggregate BMI and blood pressure by median. Default: %(default)s'
+    '--loinc_code_unit_standardization',
+    type = str,
+    default = 'boruta_feature',
+    choices=['boruta_feature','standardize_remove_outlier' ,'observe','standardize_use_dict'],
+
+    help=(
+        "Method of lab results standarization:\n"
+        "standardize_remove_outlier: Removes observations that have different measurement discrepancy with majority unit\n and  outputs descrepancy unit in ./logs/.txt file and adds csv file. \n"
+        "boruta_feature: Uses loinc code and corresponding unit present in boruta\n"
+        "Observe: outputs descrepancy unit in ./logs/.txt file and adds csv file, and then exits execution to create own standardization dict which can be passed"
+        "standardize_use_dict: Uses json file to standardize units (typically used after using Observe mode)"
+    )
 )
 
 parse.add_argument(
-    '--output_before_joining',
+    '--output_transformed_datasets_before_joining',
     action=argparse.BooleanOptionalAction,
     default=False,
     help=(
@@ -115,25 +128,25 @@ parse.add_argument(
 )
 
 parse.add_argument(
+    '--lab_results_feature_set',
+    type = str,
+    default = 'boruta_features',
+    choices = ['boruta_features','domain_expert','all_features'],
+    help=(
+        "LOINC codes to be choose: boruta loinc codes, domain expert suggested or all loinc codes"
+        "Default: %(default)s"
+    )
+)
+
+parse.add_argument(
     '--retrieve_sdoh_cvs',
     action=argparse.BooleanOptionalAction,
-    default=False,
+    default=True,
     help=(
         "If enabled, collects SDoH zipcode-level from ACS."
         "Use this if cvs_data file is not available. Default: %(default)s"
     )
 )
-
-parse.add_argument(
-    '--apply_unit_standardizer_lab_results',
-    action=argparse.BooleanOptionalAction,
-    default=False,
-    help=(
-        "If enabled, does unit standardization by removing invalid units."
-        "Default: %(default)s, meaning script uses lab results from boruta features and it's corresponding units."
-    )
-)
-
 
 parse.add_argument(
     '--output_file_format',
@@ -147,8 +160,8 @@ parse.add_argument(
     '--mode',
     type=str,
     default='predict',
-    choices=['predict', 'model'],
-    help='Choose the operation mode: "model" (for training), "predict" (for inference). Default: %(default)s'
+    choices=['predict', 'evaluate'],
+    help='Choose the operation mode for dataset: "evaluate" (for training and testing), "predict" (for inference). Default: %(default)s'
 )
 
 parse.add_argument(
@@ -163,6 +176,32 @@ parse.add_argument(
     )
 )
 
+
+parse.add_argument(
+    '--census_api_key',
+    type = str,
+    default = None,
+    help=(
+        "(Required) Your U.S. Census API key. This argument must be provided to access Census data."
+    )
+)
+
+
+parse.add_argument(
+    '--target_label',
+    type = str,
+    help=(
+        "Column name which has Outcome/Target Class, used when argument 'mode' is 'eval'"
+    )
+)
+
+parse.add_argument(
+    '--handle_missing_unit',
+    type = str,
+    choices = ['drop','assign'],
+    help = ("")
+)
+
 parse.add_argument(
     '--verbose',
     action=argparse.BooleanOptionalAction,
@@ -173,14 +212,7 @@ parse.add_argument(
     )
 )
 
-parse.add_argument(
-    '--census_api_key',
-    type = str,
-    default = None,
-    help=(
-        "(Required) Your U.S. Census API key. This argument must be provided to access Census data."
-    )
-)
+
 
 
 args = parse.parse_args()
@@ -217,23 +249,31 @@ class script_config:
 ############# Main code to run #################
 if __name__ == '__main__':
 
+    ###### Arguments check ######
+    if args.mode == 'eval':
+        if args.target_label is None:
+            raise ValueError('--target_label needs to be passed when in running script in eval mode')
+
+
     ####### Loading all require files(Features and data for helper functions) #######
     if script_config.verbose:
         print("Loading the required dataset files.")
     if script_config.file_format == 'pl':
         suffix = '.pl'
         cohort_df = pl.scan_parquet(script_config.patient_file + suffix)
-        lab_df = pl.scan_parquet(script_config.labresults_file+ suffix)
-        diag_df = pl.scan_parquet(script_config.diag_file+ suffix)
-        meds_df = pl.scan_parquet(script_config.med_file+ suffix)
+        lab_df = pl.scan_parquet(script_config.labresults_file + suffix)
+        # lab_vitals_df = pl.scan_parquet(script_config.lab_vitals_results_file + suffix) ######### TO BE MODIFIED AFTER OBTAINING DATA
+        diag_df = pl.scan_parquet(script_config.diag_file + suffix)
+        meds_df = pl.scan_parquet(script_config.med_file + suffix)
         if args.retrieve_sdoh_cvs:
             cvs_df = pl.scan_parquet(script_config.cvs_file+ suffix)
     else:
         suffix ='.csv'
-        cohort_df = pl.scan_csv(script_config.patient_file+ suffix)
-        lab_df = pl.scan_csv(script_config.labresults_file+ suffix)
-        diag_df = pl.scan_csv(script_config.diag_file+ suffix)
-        meds_df = pl.scan_csv(script_config.med_file+ suffix)
+        cohort_df = pl.scan_csv(script_config.patient_file + suffix)
+        lab_df = pl.scan_csv(script_config.labresults_file + suffix)
+        # lab_vitals_df = pl.scan_csv(script_config.lab_vitals_results_file + suffix) ######### TO BE MODIFIED AFTER OBTAINING DATA
+        diag_df = pl.scan_csv(script_config.diag_file + suffix)
+        meds_df = pl.scan_csv(script_config.med_file + suffix)
         if not args.retrieve_sdoh_cvs:
             cvs_df = pl.scan_csv(script_config.cvs_file+ suffix)
 
@@ -260,22 +300,14 @@ if __name__ == '__main__':
     if not args.retrieve_sdoh_cvs:
         check_columns(cvs_df, omop_config.cvs_columns)
 
-    ##### Required columns from each dataset for modeling ####
-    # target_medication_columns = omop_config.target_medication_columns
-    # target_lab_results_columns = omop_config.target_lab_results_columns
-    # target_diag_columns = omop_config.target_diag_columns
-    # target_bmi_bp_columns = omop_config.target_bmi_bp_columns
-    # if not args.retrieve_sdoh_cvs:
-    #     target_cvs_columns = omop_config.target_cvs_columns
-
     ############################### Data transformation for required columns ############################### 
 
     ############## Transform medications ##############
     if script_config.medication_transformation == 'api':
         assert 'ancestor_drug_concept_name' in meds_df.collect_schema().names()
-        # meds_df = meds_df.with_columns(pl.col('ancestor_drug_concept_name').map_batches(normalize_active_ingridents, return_dtype = pl.Utf8).alias('Active_ingrident'))
+        # meds_df = meds_df.with_columns(pl.col('ancestor_drug_concept_name').map_batches(normalize_Active_ingredients, return_dtype = pl.Utf8).alias('Active_ingredient'))
         meds_df = meds_df.with_columns(
-                        normalize_active_ingredients_expr(pl.col('ancestor_drug_concept_name')).alias('Active_ingrident')
+                        normalize_active_ingredients_expr(pl.col('ancestor_drug_concept_name')).alias('Active_ingredient')
                         )
 
     elif script_config.medication_transformation == 'rxcui_api':
@@ -284,55 +316,113 @@ if __name__ == '__main__':
 
         final_act_ing_list = ["_".join(sublist) if len(sublist) > 1 else sublist[0] for sublist in act_ing_list]
 
-        meds_df = meds_df.with_columns(Active_ingrident = pl.Series(final_act_ing_list))
+        meds_df = meds_df.with_columns(Active_ingredient = pl.Series(final_act_ing_list))
 
     # Filtering patients who are on diabetes type 2 medications
     act_list_to_drop = [get_active_ingredient(rxcui) for rxcui in omop_config.ignore_rxnorm_codes]
     medications_to_drop = ["_".join(sublist) if len(sublist) > 1 else sublist[0] for sublist in act_list_to_drop]
-    med_ignore_patient_id = np.unique(meds_df.filter(pl.col('Active_ingrident').is_in(medications_to_drop)).collect()['person_id'].to_list())
+    med_ignore_patient_id = np.unique(meds_df.filter(pl.col('Active_ingredient').is_in(medications_to_drop)).collect()['person_id'].to_list())
 
     ############## Transform diagnoses codes to PheWas codes/ATC codes ##############
     diag_df = diag_df.with_columns((pl.col("vocabulary_id")+':'+pl.col('concept_code')).alias('ICD_code'))
-    diag_df = diag_df.with_columns(pl.col("ICD_code").map_elements(get_phecode_from_concept_cd, return_dtype = pl.Utf8).alias("phecode_map"))
+    diag_df = diag_df.with_columns(
+    pl.col("ICD_code").map_elements(
+        lambda cd: get_phecode_from_concept_cd(cd, phewas_mapping_dicts),
+        return_dtype=pl.Utf8
+    ).alias("phecode_map")
+)
 
     ############## Transform lab results: Filter required lab results and unit standardization and aggregation (median) ##############
 
     # Define keys for the dictionaries
-    keys = ("measurement_source_value", "unit_source_value")
 
-    # renaming columns
-    lab_df = lab_df.rename({"measurement_source_value": "LabLOINC", "unit_source_value": "Units","value_as_number":'Result_Number'})
-
-    # Convert tuple to list of dictionaries
-    # dict_loinc_unit = [dict(zip(keys, item)) for item in omop_config.lab_loinc_and_unit_tuple]
-
-    #### Filtering boruta features ####
-    # lab_final_df = lab_df.filter(
-    #     pl.struct(["LabLOINC", "Units"]).is_in(dict_loinc_unit)
-    # )
-
-    combo_df = pl.DataFrame(tuple(omop_config.units_validation_tuple_boruta.items()), schema=['LabLOINC', 'Result_Unit'])
+    # renaming columns for lab_df
+    lab_df = lab_df.rename({"measurement_source_value": "LabLOINC", "unit_source_value": "Result_Unit", "value_as_number":'Result_Number'})
+    lab_df = (
+                lab_df
+                .sort(["person_id", "measurement_date"])
+                .select("person_id", "LabLOINC", "Result_Number", "Result_Unit")
+            )
     
-    # Create a struct column in combo_df for unique combinations
-    combo_structs = combo_df.select(pl.struct(["LabLOINC", "Result_Unit"]).alias("combo_struct"))["combo_struct"]
+    # renaming columns for lab_vitals_df (SKIPPING UNTIL WE GET DATA)
+    # lab_vitals_df = lab_vitals_df.rename({"observation_date":"measurement_date", "observation_source_value": "LabLOINC", "unit_source_value": "Result_Unit", "value_as_number":'Result_Number'})
+    # lab_vitals_df = (
+    #             lab_vitals_df
+    #             .orderBy("person_id", "measurement_date")
+    #             .select("person_id", "LabLOINC", "Result_Number", "Result_Unit")
+    #         )
+
+    check_features = []
+
+    if args.lab_results_feature_set == 'domain_expert':
+        with open(omop_config.de_loincs_path, 'rb') as file:
+            de_loincs  = pickle.load(file)
+           
+
+        lab_df = lab_df.filter(pl.col("LabLOINC").is_in(de_loincs)) # Filtering only domain expert loinc code
+
+        if args.verbose:
+            print("Filtering out loinc codes that are not in domain expert suggested loinc codes")
+
+        check_features = de_loincs
+
+    elif args.lab_results_feature_set == 'boruta_features':
+        combo_df = pl.DataFrame(tuple(omop_config.units_validation_tuple_boruta.items()), schema=['LabLOINC', 'Result_Unit'])
+        combo_df = combo_df.with_columns(
+        pl.col("LabLOINC").str.strip_prefix("LOINC:").alias("LabLOINC")
+        )
+        # Create a struct column in combo_df for unique combinations
+        combo_structs = combo_df.select(pl.struct(["LabLOINC", "Result_Unit"]).alias("combo_struct"))["combo_struct"]
+
+        check_features = [loinc.split(':')[-1] for loinc in list(omop_config.units_validation_tuple_boruta.keys())] # loinc codes from boruta features
+
+
+    # Standardization observation script
+    if args.loinc_code_unit_standardization == 'Observe':
+
+        loinc_codes_measurement_and_unit_check(lab_df, loinc_featureset_name = args.lab_results_feature_set, loinc_features= check_features)
+    
+    elif args.loinc_code_unit_standardization == 'standardize_remove_outlier':
+
+        drop_loinc_unit_pairs = loinc_codes_measurement_and_unit_check(lab_df, mode = args.loinc_code_unit_standardization) #### Modify later
+        ### Add code to drop the pairs
+        drop_combo_df = pl.DataFrame(drop_loinc_unit_pairs, schema=['LabLOINC', 'Result_Unit'])
+
+
+    elif args.loinc_code_unit_standardization =='standardize_use_dict':
+
+        ### later implementation ###
+        #Read json#
+        unit_std_dict ={}
+
+    else:
+        pass
+
 
     # Now filter lab_results_df to exclude rows with LabLOINC/Result_Unit combos in combo_df
-    lab_final_df = lab_df.filter(
-        pl.struct(["LabLOINC", "Result_Unit"]).is_in(combo_structs)
-    )
+    if args.loinc_code_unit_standardization == 'boruta_features':
+        lab_final_df = lab_df.filter(
+            pl.struct(["LabLOINC", "Result_Unit"]).is_in(combo_structs)
+        )
+    elif args.loinc_code_unit_standardization == 'standardize_remove_outlier':
+        lab_final_df = lab_df.filter(~pl.struct((pl.col('LabLOINC'),pl.col('Result_Unit'))).
+                                           is_in(combo_df.select(pl.struct(['LabLOINC', 'Result_Unit']))))
+    else:
+        lab_final_df = lab_df
 
     lab_final_df = lab_final_df.group_by(['person_id','LabLOINC']).agg(pl.col('Result_Number').median().alias('Result_Number'))
+
+
     ############## Transform bmi and bp ##############
 
     # *** BMI *** 
     wt_df = lab_df.filter(pl.col('LabLOINC').is_in(omop_config.weight_loincs))
-    assert wt_df.select('Units').collect()['Units'].is_in(omop_config.weight_loinc_unit).all(), "weight df units column contains values in other than 'kg' or 'lb'"
+    assert wt_df.select('Result_Unit').collect()['Result_Unit'].is_in(omop_config.weight_loinc_unit).all(), "weight df units column contains values in other than 'kg' or 'lb'"
     
-    ### Uncomment below later
-    
-    # wt_df =wt_df.with_columns(
-        # pl.when(pl.col('Units')=='kg').then(pl.col('Result_Number').map_elements(convert_wt_kg_to_lb)).otherwise(pl.col('Result_Number')).alias('Result_Number')
-    # )
+    wt_df =wt_df.with_columns(
+        pl.when(pl.col('Result_Unit')=='kg').then(pl.col('Result_Number').map_elements(convert_wt_kg_to_lb)).otherwise(pl.col('Result_Number')).alias('Result_Number')
+    )
+
     wt_df = wt_df.with_columns(pl.col("Result_Number").cast(pl.Float32))
     wt_df = wt_df.filter((pl.col('Result_Number') > 65) & (pl.col('Result_Number') < 600))
     average_weight_per_patient = wt_df.group_by("person_id").agg([
@@ -342,22 +432,32 @@ if __name__ == '__main__':
     height_df = lab_df.filter(pl.col('LabLOINC').is_in(omop_config.height_loincs))
     
     # Asserting units be in inches
-    assert height_df.select('Units').collect()['Units'].is_in(omop_config.height_loinc_unit).all(), "height df units column contains values other than 'inches' or 'in'"
+    assert height_df.select('Result_Unit').collect()['Result_Unit'].is_in(omop_config.height_loinc_unit).all(), "height df units column contains values other than 'inches' or 'in'"
     
     mode_height_df = height_df.group_by("person_id").agg([
     pl.col("Result_Number").map_elements(custom_height_aggregator, return_dtype = pl.Float32).alias("mode_height")
     ])
 
     # Join the DataFrames on 'person_id'
+    
     bmi_ht_wt_df = mode_height_df.join(average_weight_per_patient, on="person_id", how="inner")
 
     # Calculate BMI
+  
     bmi_ht_wt_df = bmi_ht_wt_df.with_columns(
         (pl.col("median_weight") / (pl.col("mode_height") ** 2) * 703).alias("BMI")
     )
 
+    # print("bmi_wht_wt_df")
+
     bmi_ht_wt_df = bmi_ht_wt_df.filter((pl.col('BMI') > omop_config.bmi_range[0]) &
                              (pl.col('BMI') < omop_config.bmi_range[1]))
+    
+    ##### Creating slope data for weight
+    wt_slope_df = wt_df.group_by("PATIENT_NUM").map_groups(
+    calculate_slope,
+    schema={"PATIENT_NUM": pl.Int64, "slope": pl.Float64}
+    )
 
     # ** Diastolic and systolic BP **
     dia_bp_df = lab_df.filter(pl.col('LabLOINC').is_in(omop_config.diastolic_loinc_codes))
@@ -367,8 +467,8 @@ if __name__ == '__main__':
 
 
     #### Add units validation for dia and sys bp
-    assert dia_bp_df.select('Units').collect()['Units'].is_in(omop_config.dia_sys_stolic_unit).all(), "diastolic df units column contains values other than 'mm Hg', 'mmHg' or 'mm[Hg]'"
-    assert sys_bp_df.select('Units').collect()['Units'].is_in(omop_config.dia_sys_stolic_unit).all(), "systolic df units column contains values other than 'mm Hg', 'mmHg' or 'mm[Hg]'"
+    assert dia_bp_df.select('Result_Unit').collect()['Result_Unit'].is_in(omop_config.dia_sys_stolic_unit).all(), "diastolic df units column contains values other than 'mm Hg', 'mmHg' or 'mm[Hg]'"
+    assert sys_bp_df.select('Result_Unit').collect()['Result_Unit'].is_in(omop_config.dia_sys_stolic_unit).all(), "systolic df units column contains values other than 'mm Hg', 'mmHg' or 'mm[Hg]'"
 
 
     dia_bp_df  = dia_bp_df.filter((pl.col('Result_Number') > omop_config.diastolic_range[0]) &
@@ -386,18 +486,33 @@ if __name__ == '__main__':
 
     ])
 
+
+    ##### Creating slope data for diastolic and systolic blood pressure
+    dia_bp_slope_df = dia_bp_df.group_by("PATIENT_NUM").map_groups(
+    calculate_slope,
+    schema={"PATIENT_NUM": pl.Int64, "slope": pl.Float64}
+    )
+
+    sys_bp_slope_df = sys_bp_df.group_by("PATIENT_NUM").map_groups(
+        calculate_slope,
+        schema={"PATIENT_NUM": pl.Int64, "slope": pl.Float64}
+    )
+
     ############## Transform patient/cohort file (demographics) ##############
     cohort_df = cohort_df.with_columns(pl.col('Age_at_index').map_elements(lambda x : '18-34' if x <= 34 \
                                                         else '35-44' if 35<=x<=44 else '45-54'\
                                                         if 45<=x<=54 else '55-64' if 55<=x<=64 else \
                                                         '65-74' if  65<=x<=74 else '75_older').alias('Age_group'))
     
+
+
     
     cohort_df = cohort_df.with_columns( pl.col('Sex_CD').map_elements(func_map_sex, return_dtype = pl.Utf8).alias('Sex_CD'),
                                                pl.col('Race_CD').map_elements(func_map_race, return_dtype = pl.Utf8).alias('Race_CD'),
                                                pl.col('Hispanic_CD').map_elements(func_map_ethinicity, return_dtype = pl.Utf8).alias('Hispanic_CD'),
                                             #    pl.col('Gender_CD').map_elements(clean_prefix_data, return_dtype = pl.Utf8).alias('Gender_CD')
-                                  )    
+                                  )
+
 
     age_group_dict = {'18-34': 0,
                   '35-44': 1,
@@ -414,7 +529,7 @@ if __name__ == '__main__':
     if args.retrieve_sdoh_cvs:
 
         zcdb = ZipCodeDatabase()
-        census = Census(args.census_api_key)
+        census = Census(omop_config.census_key)
 
         try:
             # Minimal call: Get the name and total population (B01003_001E) for Washington state (FIPS 53)
@@ -449,6 +564,7 @@ if __name__ == '__main__':
                                           2017)## Add code to dynamically add zipcode
             
         pat_acs_data = []
+
         for zip in pat_zipcodes_data_clean:
             pat_acs_data.append(acs_data_zips[zip])
 
@@ -461,19 +577,25 @@ if __name__ == '__main__':
                                     'pctCollGrad': 'ACS_pctCollGrad'})
         
 
+    
+    ## Adding "LOINC:" prefix to lab results dataset
+    lab_df = lab_df.with_columns(
+    (pl.lit("LOINC:") + pl.col("LabLOINC")).alias("LabLOINC")
+    )
+    
+
     ####### Pivoting and joining the datasets #######
     meds_df = meds_df.with_columns(pl.lit(1).alias('usage'))
-    medications_pivot_df = meds_df.pivot(on = 'Active_ingrident', index = 'person_id', values = 'usage', aggregate_function = 'max')
 
-    lab_results_pivot_df = lab_df.pivot(on = 'LabLOINC', index = 'person_id', values = 'Result_Number')
+    medications_pivot_df = meds_df.collect().pivot(on = 'Active_ingredient', index = 'person_id', values = 'usage', aggregate_function = 'max')
+
+    
+    lab_results_pivot_df = lab_df.collect().pivot(on = 'LabLOINC', index = 'person_id', values = 'Result_Number', aggregate_function = 'median')
     
     diag_df = diag_df.with_columns(pl.lit(1).alias('Usage'))
-    diagnoses_pivot_df = diag_df.pivot(on = 'phecode_map', index = 'person_id', values = 'Usage', aggregate_function = 'max')
+    diagnoses_pivot_df = diag_df.collect().pivot(on = 'phecode_map', index = 'person_id', values = 'Usage', aggregate_function = 'max')
 
-    community_vital_pivot_df = cvs_df#.pivot(on = 'Indicator', 
-                                                    # index ='person_id', 
-                                                    # values ='FACT', 
-                                                    # aggregate_function = 'first')
+    community_vital_pivot_df = cvs_df.collect()
     
     #######
     
@@ -491,7 +613,45 @@ if __name__ == '__main__':
     req_patients -= set(med_ignore_patient_id)
 
     ##################### Joining the pivoted feature dataframes #####################
-    cohort_df = cohort_df.filter(pl.col('person_id').is_in(req_patients))
+    if args.output_transformed_datasets_before_joining:
+        ### create output director
+        newpath = r'./feature_transformation_datasets/' 
+        if not os.path.exists(newpath):
+            os.makedirs(newpath)
+        
+        ### Save the files
+        # Prefix for filenames:
+        if args.lab_results_feature_set == 'all_features':
+            lab_prefix = 'all'
+        elif args.lab_results_feature_set == 'domain_expert':
+            lab_prefix = 'domain_expert'
+        elif args.lab_results_feature_set == 'boruta_features':
+            lab_prefix = 'domain_expert'
+
+        # Save the pivoted dataframes as parquet files
+
+        if args.output_file_format == 'parquet':
+            medications_pivot_df.write_parquet(os.path.join(newpath, 'medications_pivot_df.pl'))
+            lab_results_pivot_df.write_parquet(os.path.join(newpath, f'lab_results_{lab_prefix}_pivot_df.pl'))
+            diagnoses_pivot_df.write_parquet(os.path.join(newpath, 'diagnoses_pivot_df.pl'))
+            community_vital_pivot_df.write_parquet(os.path.join(newpath, 'community_vital_pivot_df.pl'))
+            dia_bp_slope_df.write_parquet(os.path.join(newpath, 'dia_bp_slope.pl'))
+            sys_bp_slope_df.write_parquet(os.path.join(newpath, 'sys_bp_slope.pl'))
+            wt_slope_df.write_parquet(os.path.join(newpath, 'wt_slope.pl'))
+
+
+        else:
+            medications_pivot_df.write_csv(os.path.join(newpath, 'medications_pivot_df.csv'))
+            lab_results_pivot_df.write_csv(os.path.join(newpath, f'lab_results_{lab_prefix}_pivot_df.csv'))
+            diagnoses_pivot_df.write_csv(os.path.join(newpath, 'diagnoses_pivot_df.csv'))
+            community_vital_pivot_df.write_csv(os.path.join(newpath, 'community_vital_pivot_df.csv'))
+            dia_bp_slope_df.write_csv(os.path.join(newpath, 'dia_bp_slope.csv'))
+            sys_bp_slope_df.write_csv(os.path.join(newpath, 'sys_bp_slope.csv'))
+            wt_slope_df.write_csv(os.path.join(newpath, 'wt_slope.csv'))
+
+
+
+    cohort_df = cohort_df.filter(pl.col('person_id').is_in(req_patients)).collect()
 
     temp_df = cohort_df.join(medications_pivot_df, on = 'person_id', how = 'left')
     temp_df = temp_df.fill_null(0)
@@ -502,14 +662,15 @@ if __name__ == '__main__':
     temp_df = temp_df.join(lab_results_pivot_df, on = 'person_id', how = 'left')
     if args.missing_numerical_value_negative_10:
         temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
-    temp_df = temp_df.join(bmi_ht_wt_df, on = 'person_id', how = 'left')
 
+    temp_df = temp_df.join(bmi_ht_wt_df.collect(), on = 'person_id', how = 'left')
     if args.missing_numerical_value_negative_10:
         temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
+
     temp_df = temp_df.join(dia_bp_df, on = 'person_id', how = 'left')
-    
     if args.missing_numerical_value_negative_10:
         temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
+
     temp_df = temp_df.join(sys_bp_df, on = 'person_id', how = 'left')
     if args.missing_numerical_value_negative_10:
         temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
@@ -517,6 +678,18 @@ if __name__ == '__main__':
     temp_df = temp_df.join(cvs_df, on = 'person_id',how ='left')
     if args.missing_numerical_value_negative_10:
         temp_df = temp_df.fill_null(omop_config.missing_numerical_replace_val)
+
+    temp_df = temp_df.join(dia_bp_slope_df.collect(), on = 'person_id',how ='left')
+    if args.missing_numerical_value_negative_10:
+        temp_df = temp_df.fill_null(0)
+
+    temp_df = temp_df.join(sys_bp_slope_df.collect(), on = 'person_id',how ='left')
+    if args.missing_numerical_value_negative_10:
+        temp_df = temp_df.fill_null(0)
+
+    temp_df = temp_df.join(wt_slope_df.collect(), on = 'person_id',how ='left')
+    if args.missing_numerical_value_negative_10:
+        temp_df = temp_df.fill_null(0)
 
     # Define the columns to one-hot encode
     columns_to_one_hot_encode = ['Sex_CD', 'Race_CD', 'Hispanic_CD']#, 'Gender_CD']
@@ -529,7 +702,43 @@ if __name__ == '__main__':
     if args.mode == 'predict':
         if args.feature_set == 'Boruta':
             df_final_modeing_dataset = df_final_modeing_dataset.filter(pl.col(omop_config.target_features))
+            if args.output_file_format == 'parquet':
+                df_final_modeing_dataset.write_parquet("Final_modeling_dataset_predict"
+                                                       +'_lab_'+'median_'+lab_prefix
+                                                        +'_diag_'+'phewas'
+                                                        +'_bmi_bp_'+'csv_'             
+                                                        +'_ordinal_nominal_encoded'
+                                                       +".pl")
+            else:
+                df_final_modeing_dataset.write_parquet("Final_modeling_dataset_predict"
+                                                       +'_lab_'+'median_'+lab_prefix
+                                                        +'_diag_'+'phewas'
+                                                        +'_bmi_bp_'+'csv_'              
+                                                        +'_ordinal_nominal_encoded'
+                                                       +".csv")
+
+
     elif args.mode == 'evaluate':
+
+        if not args.target_label:
+            raise ValueError("Target label is not passed or is empty string")
+
         if args.feature_set == 'Boruta':
-            df_final_modeing_dataset = df_final_modeing_dataset.filter(pl.col(omop_config.target_features + omop_config.target_label))
+            df_final_modeing_dataset = df_final_modeing_dataset.filter(pl.col(omop_config.target_features + args.target_label))
+            if args.output_file_format == 'parquet':
+                df_final_modeing_dataset.write_parquet("Final_modeling_dataset_evaluate"
+                                                       +'_lab_'+'median_'+lab_prefix
+                                                        +'_diag_'+'phewas'
+                                                        +'_bmi_bp_'+'csv_'              
+                                                        +'_ordinal_nominal_encoded_Boruta'
+                                                       +".pl")
+            else:
+                df_final_modeing_dataset.write_parquet("Final_modeling_dataset_evaluate"
+                                                       +'_lab_'+'median_'+lab_prefix
+                                                        +'_diag_'+'phewas'
+                                                        +'_bmi_bp_'+'csv_'              
+                                                        +'_ordinal_nominal_encoded'
+                                                       +".csv")
+
+
 

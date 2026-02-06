@@ -15,6 +15,9 @@ import requests
 import pickle
 import us
 from tqdm import tqdm
+import datetime
+from scipy.stats import linregress
+import os
 
 from omop_config import *
 
@@ -117,20 +120,20 @@ def meds_rxcui_to_api(list_rxcui, verbose = False):
             dict_rxnorm_active_ing[rx_code] = get_active_ingredient(rx_code)
 
     if verbose:
-        print("Rx code for which active ingrident cannot be found: ")
+        print("Rx code for which active ingredient cannot be found: ")
         print(no_act_ing_codes)
 
     print(dict_rxnorm_active_ing)
     return active_ingredients_list_dataframe
 
-# def normalize_active_ingridents(name):
+# def normalize_active_ingredients(name):
 #     if type(name) == str:
 #         return ('_').join(part.strip() for part in name.split('/'))
 #     else:
 #         print("value passed and its type: ",name, " and ", type(name))
 #         raise ValueError("name parameter is not string")
 
-def normalize_active_ingridents(batch: pl.Series) -> pl.Series:
+def normalize_Active_ingredients(batch: pl.Series) -> pl.Series:
     # The function will be applied to a Series batch, so use .apply on the batch
     return batch.apply(
         lambda name: ('_').join(part.strip() for part in name.split('/'))
@@ -274,6 +277,8 @@ def get_acs_data(census_object, zipstate_object, cds_fields, zipcode, year, miss
         return_dict = acs_data[0]
 
 
+
+
     except:
         #Handle invalid zipcodes
         return_dict = dict(zip(cds_fields,[missing_value]*len(cds_fields)))
@@ -282,7 +287,7 @@ def get_acs_data(census_object, zipstate_object, cds_fields, zipcode, year, miss
         return_dict['pctCollGrad'] = missing_value
 
     
-        return return_dict
+    return return_dict
 
 
 ############# demographic functions #############
@@ -310,3 +315,108 @@ def func_map_ethinicity(value: str):
         return "UNK"
     else:
         return
+    
+def calculate_slope(subdf: pl.DataFrame) -> pl.DataFrame:
+    dates = subdf["START_DATE"].to_numpy()
+    values = subdf["Result_Number"].to_numpy()
+    ordinal_dates = [d.astype(datetime.datetime).toordinal() for d in dates]
+    
+    if len(dates) > 3 and len(set(ordinal_dates)) > 1:
+        slope, *_ = linregress(ordinal_dates, values)
+    else:
+        slope = 0.0
+
+    # (You might want PATIENT_NUM in the return for identification)
+    return pl.DataFrame({
+        "PATIENT_NUM": [subdf["PATIENT_NUM"][0]],
+        "slope": [slope]
+    })
+
+
+def loinc_codes_measurement_and_unit_check(lab_results_df, verbose, loinc_featureset_name = None , mode = None, loinc_features = []):
+
+    lab_results_units_grouped_df = lab_results_df.group_by(['LabLOINC','Result_Unit']).agg([pl.col('Result_Number'),
+                                                                                       pl.col('Result_Unit').count().alias('Unit_Count')
+                                                                                       ]).sort(['LabLOINC','Result_Unit']).collect()
+    if verbose:
+        print("Number of unique combinations of loinc code and their units",len(lab_results_units_grouped_df))
+
+    if loinc_features == []:
+        raise ValueError("loinc_features are empty which is not valid input for the parameter")
+    
+    Loincs_with_more_than_1_unit_count = 0
+    loinc_unit_pairs = []
+
+    if loinc_featureset_name =='domain_expert':
+        loincs_focus = loinc_features ## add code for obtaining de loinc codes
+
+    elif loinc_featureset_name =='boruta_features':
+        loincs_focus = loinc_features
+
+    elif loinc_featureset_name =='all_features':
+        loincs_focus = np.unique(lab_results_df.select('LabLOINC').collect()['LabLOINC'].to_list()).tolist()
+
+    newpath = r'./logs/' 
+    if not os.path.exists(newpath):
+        os.makedirs(newpath)
+    
+    with open(newpath + f'output_loincs_units_check_function_{loinc_featureset_name}_output.txt', 'w') as f:
+
+        for loinc in loincs_focus:
+            focus_group_loinc = lab_results_units_grouped_df.filter(pl.col('LabLOINC') == loinc).sort('Unit_Count', descending=True)
+            
+            if len(focus_group_loinc) == 1:
+                continue
+                
+            total_count_patients_associated_with = focus_group_loinc['Unit_Count'].sum()
+            if total_count_patients_associated_with < 1000:
+                continue
+            loinc_unit_with_max_count = focus_group_loinc['Result_Unit'][0]
+            loinc_values_with_max_count = focus_group_loinc['Result_Number'][0].to_list()
+            
+            other_units_fg = focus_group_loinc.filter(pl.col('Result_Unit')!=loinc_unit_with_max_count)['Result_Unit'].to_list()
+            max_val_in_pri_unit = np.quantile(loinc_values_with_max_count, 0.75)
+            min_val_in_pri_unit = min(loinc_values_with_max_count)
+            #q25 = np.quantile(loinc_values_with_max_count, 0.25)
+            #q75 = np.quantile(loinc_values_with_max_count, 0.75)
+            median_val_in_pri_unit = np.median(loinc_values_with_max_count)
+
+
+        
+            print_flag =  False
+            for unit in other_units_fg:
+
+                other_unit_values = focus_group_loinc.filter(pl.col('Result_Unit') == unit)['Result_Number'][0].to_list()
+        #         print(other_unit_values)
+                max_val_in_ou = max(other_unit_values)
+                min_val_in_ou = min(other_unit_values)
+                median_val_in_ou = np.mean(other_unit_values)
+
+                if min_val_in_pri_unit <= median_val_in_ou <= max_val_in_pri_unit:
+                    continue
+                else:
+                    loinc_unit_pairs.append((loinc,unit))
+                    f.write("Unit to focus: ",unit)            
+                    Loincs_with_more_than_1_unit_count += 1
+                    if median_val_in_pri_unit/median_val_in_ou > 10 or median_val_in_pri_unit/median_val_in_ou < 0.1:
+                        f.write(" The value is orders above 10th order\n")
+                        print_flag = True
+                    else:
+                        f.write(" The value is orders below 10th order\n")
+                        print_flag = True
+
+            if print_flag:
+                f.write(str(focus_group_loinc))
+
+            f.write('*'*20 +"\n\n")
+
+        f.write(f"\n\n\nNumber of unique loinc codes with disparities {len(loinc_unit_pairs)}")
+
+        f.close()
+    
+    if mode == 'standardize_remove_outlier':
+        return loinc_unit_pairs
+
+    
+        
+
