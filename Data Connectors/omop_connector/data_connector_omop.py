@@ -2,10 +2,10 @@
 Author: Chandra Harsha Rachabathuni
 Date: 2025-10-23
 Description: Python script to transform omop raw data into data required for type-2 diabetes prediction model.
-Version: 2.0
+Version: 3.0
 
 TO-DO:
-1. Add data validator function in helper functions (units validator for sys and dia bp)
+1. Handle missing units
 2. Verbose functionality
 3. Skip feature engineering
 
@@ -191,11 +191,11 @@ parse.add_argument(
     '--target_label',
     type = str,
     help=(
-        "Column name which has Outcome/Target Class, used when argument 'mode' is 'eval'"
+        "Column name which has Outcome/Target Class, used when argument 'mode' is 'evaluate'"
     )
 )
 
-parse.add_argument(
+parse.add_argument( ##### TO-DO lATER
     '--handle_missing_unit',
     type = str,
     choices = ['drop','assign'],
