@@ -1,6 +1,7 @@
 import pandas as pd
 import pyodbc
-import sqlalchemy as db, text
+import sqlalchemy as db
+from sqlalchemy import text
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.engine import URL
 
@@ -8,11 +9,17 @@ import argparse
 import os
 
 def get_alchemy_engine(dbtype, server, database, uid=None, pwd=None, port=None, driver=None):
-    if dbtype.lower() in ('mssql', 'sqlserver', 'sql_server'):
-        # SQL Server via pyodbc
-        drivers = [item for item in pyodbc.drivers()]
+    dbtype_lower = dbtype.lower()
+
+    # ── SQL Server / MSSQL ────────────────────────────────────────────────────
+    if dbtype_lower in ('mssql', 'sqlserver', 'sql_server'):
+        drivers = pyodbc.drivers()
         if not driver:
-            for recommended in ["ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server", "SQL Server"]:
+            for recommended in [
+                "ODBC Driver 18 for SQL Server",
+                "ODBC Driver 17 for SQL Server",
+                "SQL Server",
+            ]:
                 if recommended in drivers:
                     driver = recommended
                     break
@@ -20,11 +27,12 @@ def get_alchemy_engine(dbtype, server, database, uid=None, pwd=None, port=None, 
                 raise ValueError('No suitable SQL Server ODBC driver found')
         else:
             if driver not in drivers:
-                raise ValueError(f"Specified driver '{driver}' not in available drivers: {drivers}")
+                raise ValueError(
+                    f"Specified driver '{driver}' not in available drivers: {drivers}"
+                )
         print(f"Using driver: {driver}")
 
         if uid and pwd:
-            # SQL authentication
             con_str = (
                 fr'Driver={driver};'
                 fr'Server={server};'
@@ -34,7 +42,7 @@ def get_alchemy_engine(dbtype, server, database, uid=None, pwd=None, port=None, 
                 r'TrustServerCertificate=Yes;'
             )
         else:
-            # Windows authentication
+            # Windows (Kerberos/SSPI) auth
             con_str = (
                 fr'Driver={driver};'
                 fr'Server={server};'
@@ -47,31 +55,66 @@ def get_alchemy_engine(dbtype, server, database, uid=None, pwd=None, port=None, 
         engine = create_engine(conn_url)
         return engine
 
-    elif dbtype.lower() == 'postgresql':
-        userpass = f"{uid}:{pwd}@" if uid and pwd else ""
-        port = port or 5432
-        url = f"postgresql://{userpass}{server}:{port}/{database}"
-        engine = create_engine(url)
-        return engine
-
-    elif dbtype.lower() in ('mysql', 'mariadb'):
-        userpass = f"{uid}:{pwd}@" if uid and pwd else ""
+    # ── MariaDB ───────────────────────────────────────────────────────────────
+    elif dbtype_lower in ('mariadb', 'maria_db'):
+        if not (uid and pwd):
+            raise ValueError("MariaDB requires uid and pwd; Windows auth is not supported.")
         port = port or 3306
-        url = f"mysql+pymysql://{userpass}{server}:{port}/{database}"
-        engine = create_engine(url)
+        conn_url = URL.create(
+            "mariadb+mariadbconnector",
+            username=uid,
+            password=pwd,
+            host=server,
+            port=port,
+            database=database,
+        )
+        engine = create_engine(conn_url)
         return engine
 
-    elif dbtype.lower() in ('oracle',):
-        # Oracle
-        port = port or 1521
-        userpass = f"{uid}:{pwd}@" if uid and pwd else ""
-
-        url = f"oracle+orcaledb://{userpass}{server}:{port}/?service_name={database}"
-        engine = create_engine(url)
+    # ── MySQL ─────────────────────────────────────────────────────────────────
+    elif dbtype_lower in ('mysql', 'my_sql'):
+        if not (uid and pwd):
+            raise ValueError("MySQL requires uid and pwd.")
+        port = port or 3306
+        conn_url = URL.create(
+            "mysql+pymysql",
+            username=uid,
+            password=pwd,
+            host=server,
+            port=port,
+            database=database,
+        )
+        engine = create_engine(conn_url)
         return engine
 
+    # ── PostgreSQL ────────────────────────────────────────────────────────────
+    elif dbtype_lower in ('postgresql', 'postgres', 'pg'):
+        if not (uid and pwd):
+            raise ValueError("PostgreSQL requires uid and pwd.")
+        port = port or 5432
+        conn_url = URL.create(
+            "postgresql+psycopg2",
+            username=uid,
+            password=pwd,
+            host=server,
+            port=port,
+            database=database,
+        )
+        engine = create_engine(conn_url)
+        return engine
+
+    # ── SQLite ────────────────────────────────────────────────────────────────
+    elif dbtype_lower in ('sqlite', 'sqlite3'):
+        # `database` is the file path; server/uid/pwd are ignored
+        engine = create_engine(f"sqlite:///{database}")
+        return engine
+
+    # ── Unsupported ───────────────────────────────────────────────────────────
     else:
-        raise ValueError("Unsupported database type. Supported: mssql/sqlserver, postgresql, mysql, oracle")
+        raise ValueError(
+            f"Unsupported dbtype '{dbtype}'. "
+            "Supported: mssql, sqlserver, sql_server, mariadb, mysql, postgresql, postgres, pg, sqlite"
+        )  
     
 
 def save_df(df, filename, file_format):
@@ -92,7 +135,7 @@ if __name__ == '__main__':
     parser.add_argument('--pwd', type=str, help='Database password')
     parser.add_argument('--port', type=int, help='Database port (optional)')
     parser.add_argument('--driver', type=str, help='ODBC driver for SQL Server (optional)')
-    parser.add_argument('--sql_query_schema', type=str, help='schema used alongside dtaabse in sql server. example: "dbo." ')
+    parser.add_argument('--sql_query_schema', type=str, default = 'dbo.', help='schema used alongside dtaabse in sql server. example: "dbo." ')
     parser.add_argument('--data_store_path', type=str, default = './data_folder/', help='Path in which the data files get stored. Default path: %(deafult)s ')
     parser.add_argument("--file_name_prefix", type =str, default ='omop', help ='saved filenames prefix. Default: %(default)s')
     parser.add_argument( '--file_format',  type=str, default='csv',  choices=['csv', 'parquet'], 
@@ -117,8 +160,7 @@ if __name__ == '__main__':
             uid=args.uid, 
             pwd=args.pwd,
             port=args.port,
-            driver=args.driver,
-            encoding=args.encoding,
+            driver=args.driver
         )
         with engine.connect() as conn:
             print("Connection established successfully.")

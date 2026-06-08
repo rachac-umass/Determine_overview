@@ -10,3 +10,6 @@ census==0.8.24
 us==3.2.0
 argparse==1.4.0
 scipy==1.15.3
+pyodbc==5.3.0
+sqlalchemy==2.0.46
+fastparquet==2026.5.0
